@@ -72,18 +72,26 @@ type SlowLog struct {
 	Time     string
 }
 
-func getSlowLog(addr string) (data []SlowLog, err error) {
-
+func getSlowLog(addr string) ([]SlowLog, error) {
+	var data []SlowLog
 	// init redis conn
-	var rc *redis.Client
-	rc, err = initStandRedis(addr)
+	rc, err := initStandRedis(addr)
+	if err != nil {
+		return data, err
+	}
 	defer rc.Close()
 
 	// get slow log numbers
 	nums, err := rc.Do(ctx, "slowlog", "len").Result()
+	if err != nil {
+		return data, err
+	}
 
 	// get slow log info
 	ret, err := rc.SlowLogGet(ctx, nums.(int64)).Result()
+	if err != nil {
+		return data, err
+	}
 
 	for _, item := range ret {
 		tmp := SlowLog{
