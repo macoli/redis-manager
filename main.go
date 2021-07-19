@@ -43,20 +43,22 @@ func main() {
 	// slow log args
 	ss := flag.NewFlagSet("slowlog", flag.ExitOnError)
 	sAddr := ss.String("addr", "127.0.0.1:6379", "redis addr")
+	sPass := ss.String("pass", "", "redis password")
 	sRedisType := ss.String("type", "standalone", "redis type:standalone/cluster")
 	sSortBy := ss.String("sortby", "Time", "sortBy:Instance/Command/Duration/Time")
 
 	cm := flag.NewFlagSet("clustermap", flag.ExitOnError)
 	cAddr := cm.String("addr", "127.0.0.1:6379", "redis addr")
+	cPass := cm.String("pass", "", "redis password")
 	cSortBy := cm.String("sortby", "MasterIP", "sortBy:MasterID/MasterIP/slaveIP/slaveID")
 
 	switch os.Args[1] {
 	case "slowlog":
 		paramsCheck(ss)
-		showSlowLog.Run(*sAddr, *sRedisType, *sSortBy)
+		showSlowLog.Run(*sAddr, *sPass, *sRedisType, *sSortBy)
 	case "clustermap":
 		paramsCheck(cm)
-		showClusterMap.Run(*cAddr, *cSortBy)
+		showClusterMap.Run(*cAddr, *cPass, *cSortBy)
 	default:
 		usage()
 		os.Exit(1)

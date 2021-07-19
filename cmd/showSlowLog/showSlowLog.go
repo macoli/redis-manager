@@ -20,9 +20,9 @@ type SlowLog struct {
 }
 
 //get slow log and format
-func formatSlowLog(addr string) ([]SlowLog, error) {
+func formatSlowLog(addr string, password string) ([]SlowLog, error) {
 	//get slow log
-	ret, err := r.GetSlowLog(addr)
+	ret, err := r.GetSlowLog(addr, password)
 	if err != nil {
 		return nil, err
 	}
@@ -41,9 +41,9 @@ func formatSlowLog(addr string) ([]SlowLog, error) {
 }
 
 //get cluster nodes and format
-func formatClusterNodes(addr string) (instances []string, err error) {
+func formatClusterNodes(addr string, password string) (instances []string, err error) {
 	//get cluster nodes
-	ret, err := r.GetClusterNodes(addr)
+	ret, err := r.GetClusterNodes(addr, password)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +106,12 @@ func show(data []SlowLog, sortColumn string) {
 }
 
 //Run show slow log main func
-func Run(instance, redisType, sortBy string) {
+func Run(instance, password, redisType, sortBy string) {
 	// get all slow log info
 	var slowLogs []SlowLog
 	switch {
 	case redisType == "standalone": //standalone type
-		ret, err := formatSlowLog(instance)
+		ret, err := formatSlowLog(instance, password)
 		if err != nil {
 			fmt.Printf("get slowlog failed, err:%v\n", err)
 			return
@@ -119,14 +119,14 @@ func Run(instance, redisType, sortBy string) {
 		slowLogs = append(slowLogs, ret...)
 	case redisType == "cluster":
 		//get all instance list from cluster
-		instances, err := formatClusterNodes(instance)
+		instances, err := formatClusterNodes(instance, password)
 		if err != nil {
 			fmt.Printf("get all instances failed, err:%v\n", err)
 			return
 		}
 
 		for _, instance := range instances { //cluster type
-			ret, err := formatSlowLog(instance)
+			ret, err := formatSlowLog(instance, password)
 			if err != nil {
 				fmt.Printf("get slowlog failed, err:%v\n", err)
 				return

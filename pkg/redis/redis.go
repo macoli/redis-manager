@@ -11,10 +11,10 @@ var (
 )
 
 //InitStandRedis init standalone redis client
-func InitStandRedis(addr string) (rc *redis.Client, err error) {
+func InitStandRedis(addr string, password string) (rc *redis.Client, err error) {
 	rc = redis.NewClient(&redis.Options{
 		Addr:     addr,
-		Password: "",
+		Password: password,
 		DB:       0,
 		PoolSize: 100,
 	})
@@ -23,9 +23,11 @@ func InitStandRedis(addr string) (rc *redis.Client, err error) {
 }
 
 //InitClusterRedis init cluster redis client
-func InitClusterRedis(addr string) (rc *redis.ClusterClient, err error) {
+func InitClusterRedis(addr string, password string) (rc *redis.ClusterClient, err error) {
 	rc = redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: []string{addr},
+		Addrs:    []string{addr},
+		Password: password,
+		PoolSize: 100,
 	})
 
 	_, err = rc.Ping(CTX).Result()
@@ -33,10 +35,10 @@ func InitClusterRedis(addr string) (rc *redis.ClusterClient, err error) {
 }
 
 //GetClusterInstances get all redis instance from cluster redis
-func GetClusterNodes(addr string) (ret string, err error) {
+func GetClusterNodes(addr string, password string) (ret string, err error) {
 	// init redis cluster conn
 	var rc *redis.ClusterClient
-	rc, err = InitClusterRedis(addr)
+	rc, err = InitClusterRedis(addr, password)
 	defer rc.Close()
 
 	// redis command: cluster nodes
@@ -48,9 +50,9 @@ func GetClusterNodes(addr string) (ret string, err error) {
 }
 
 // GetSlowLog get slow log info
-func GetSlowLog(addr string) (ret []redis.SlowLog, err error) {
+func GetSlowLog(addr string, password string) (ret []redis.SlowLog, err error) {
 	// init redis conn
-	rc, err := InitStandRedis(addr)
+	rc, err := InitStandRedis(addr, password)
 	if err != nil {
 		return nil, err
 	}

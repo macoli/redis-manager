@@ -19,9 +19,9 @@ type ClusterMap struct {
 }
 
 //get cluster nodes and format
-func formatClusterNodes(addr string) (clusterMap []ClusterMap, err error) {
+func formatClusterNodes(addr string, password string) (clusterMap []ClusterMap, err error) {
 	//get cluster nodes
-	ret, err := r.GetClusterNodes(addr)
+	ret, err := r.GetClusterNodes(addr, password)
 	if err != nil {
 		return nil, err
 	}
@@ -80,11 +80,11 @@ func dataSort(s string, data []ClusterMap) {
 		case "MasterIP":
 			return data[i].MasterAddr < data[j].MasterAddr
 		case "SlaveIP":
-			return data[i].SlaveAddr > data[j].SlaveAddr
+			return data[i].SlaveAddr < data[j].SlaveAddr
 		case "SlaveID":
-			return data[i].SlaveID > data[j].SlaveID
+			return data[i].SlaveID < data[j].SlaveID
 		default:
-			return data[i].MasterAddr > data[j].MasterAddr
+			return data[i].MasterAddr < data[j].MasterAddr
 		}
 
 	})
@@ -116,8 +116,8 @@ func show(data []ClusterMap, sortBy string) {
 }
 
 // Run show cluster map main
-func Run(instance, sortBy string) {
-	clusterMap, err := formatClusterNodes(instance)
+func Run(instance, password, sortBy string) {
+	clusterMap, err := formatClusterNodes(instance, password)
 	if err != nil {
 		fmt.Printf("format the cluster nodes info failed, err:%v\n", err)
 	}
