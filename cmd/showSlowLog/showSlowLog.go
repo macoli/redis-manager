@@ -1,55 +1,52 @@
 package showSlowLog
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/alexeyco/simpletable"
-
-	"github.com/go-redis/redis/v8"
+	r "github.com/macoli/redis-manager/pkg/redis"
+	t "github.com/macoli/redis-manager/pkg/table"
 )
 
-var (
-	ctx = context.Background()
-)
-
-// init standalone redis client
-func initStandRedis(addr string) (rc *redis.Client, err error) {
-	rc = redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: "",
-		DB:       0,
-		PoolSize: 100,
-	})
-	_, err = rc.Ping(ctx).Result()
-	return
+// SlowLog type
+type SlowLog struct {
+	Instance string
+	Command  string
+	Duration time.Duration
+	Time     string
 }
 
-// init cluster redis client
-func initClusterRedis(addr string) (rc *redis.ClusterClient, err error) {
-	rc = redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: []string{addr},
-	})
-
-	_, err = rc.Ping(ctx).Result()
-	return
+//get slow log and format
+func formatSlowLog(addr string) ([]SlowLog, error) {
+	//get slow log
+	ret, err := r.GetSlowLog(addr)
+	if err != nil {
+		return nil, err
+	}
+	// format slow log
+	var data []SlowLog
+	for _, item := range ret {
+		tmp := SlowLog{
+			addr,
+			strings.Join(item.Args, " "),
+			item.Duration,
+			item.Time.String(),
+		}
+		data = append(data, tmp)
+	}
+	return data, err
 }
 
-// get all redis instance from cluster redis
-func getAllInstance(addr string) (instances []string, err error) {
-	// init redis cluster conn
-	var rc *redis.ClusterClient
-	rc, err = initClusterRedis(addr)
-	defer rc.Close()
-
-	// redis command: cluster nodes
-	var ret string
-	ret, err = rc.ClusterNodes(ctx).Result()
+//get cluster nodes and format
+func formatClusterNodes(addr string) (instances []string, err error) {
+	//get cluster nodes
+	ret, err := r.GetClusterNodes(addr)
+	if err != nil {
+		return nil, err
+	}
 
 	// format the ret, get all instance addr
 	clusterNodesSlice := strings.Split(ret, "\n")
@@ -62,47 +59,6 @@ func getAllInstance(addr string) (instances []string, err error) {
 		instances = append(instances, instance)
 	}
 	return
-}
-
-// SlowLog type
-type SlowLog struct {
-	Instance string
-	Command  string
-	Duration time.Duration
-	Time     string
-}
-
-func getSlowLog(addr string) ([]SlowLog, error) {
-	var data []SlowLog
-	// init redis conn
-	rc, err := initStandRedis(addr)
-	if err != nil {
-		return data, err
-	}
-	defer rc.Close()
-
-	// get slow log numbers
-	nums, err := rc.Do(ctx, "slowlog", "len").Result()
-	if err != nil {
-		return data, err
-	}
-
-	// get slow log info
-	ret, err := rc.SlowLogGet(ctx, nums.(int64)).Result()
-	if err != nil {
-		return data, err
-	}
-
-	for _, item := range ret {
-		tmp := SlowLog{
-			addr,
-			strings.Join(item.Args, " "),
-			item.Duration,
-			item.Time.String(),
-		}
-		data = append(data, tmp)
-	}
-	return data, err
 }
 
 // data sort
@@ -124,59 +80,38 @@ func dataSort(s string, data []SlowLog) {
 	})
 }
 
-// show by table
-func ShowTable(data []SlowLog, sortColumn string) {
+// show table
+func show(data []SlowLog, sortColumn string) {
 	if len(data) == 0 {
 		fmt.Println("this redis has no slow log!")
 		os.Exit(0)
 	}
-
-	//create new table
-	table := simpletable.New()
-	//set table header
-	table.Header = &simpletable.Header{
-		Cells: []*simpletable.Cell{
-			{Align: simpletable.AlignCenter, Text: "ID"},
-			{Align: simpletable.AlignCenter, Text: "Instance"},
-			{Align: simpletable.AlignCenter, Text: "Command"},
-			{Align: simpletable.AlignCenter, Text: "Duration"},
-			{Align: simpletable.AlignCenter, Text: "Time"},
-		},
-	}
-
 	dataSort(sortColumn, data)
-	var cnt = 1
-	// 遍历 data,把数据放入 table
-	for _, rowMap := range data {
-		row := []interface{}{
-			strconv.Itoa(cnt),
+
+	HeaderCells := t.GenHeaderCells(SlowLog{})
+
+	dataInterface := make([]interface{}, len(data))
+	for i, rowMap := range data {
+		row := []string{
 			rowMap.Instance,
 			rowMap.Command,
 			rowMap.Duration.String(),
 			rowMap.Time,
 		}
-		r := []*simpletable.Cell{
-			{Text: row[0].(string)},
-			{Text: row[1].(string)},
-			{Text: row[2].(string)},
-			{Text: row[3].(string)},
-			{Text: row[4].(string)},
-		}
-
-		table.Body.Cells = append(table.Body.Cells, r)
-		cnt += 1
+		dataInterface[i] = row
 	}
+	BodyCells := t.GenBodyCells(dataInterface)
 
-	table.SetStyle(simpletable.StyleUnicode)
-	fmt.Println(table.String())
+	t.ShowTable(HeaderCells, BodyCells)
 }
 
+//Run show slow log main func
 func Run(instance, redisType, sortBy string) {
 	// get all slow log info
 	var slowLogs []SlowLog
 	switch {
 	case redisType == "standalone": //standalone type
-		ret, err := getSlowLog(instance)
+		ret, err := formatSlowLog(instance)
 		if err != nil {
 			fmt.Printf("get slowlog failed, err:%v\n", err)
 			return
@@ -184,14 +119,14 @@ func Run(instance, redisType, sortBy string) {
 		slowLogs = append(slowLogs, ret...)
 	case redisType == "cluster":
 		//get all instance list from cluster
-		instances, err := getAllInstance(instance)
+		instances, err := formatClusterNodes(instance)
 		if err != nil {
 			fmt.Printf("get all instances failed, err:%v\n", err)
 			return
 		}
 
 		for _, instance := range instances { //cluster type
-			ret, err := getSlowLog(instance)
+			ret, err := formatSlowLog(instance)
 			if err != nil {
 				fmt.Printf("get slowlog failed, err:%v\n", err)
 				return
@@ -201,5 +136,5 @@ func Run(instance, redisType, sortBy string) {
 	}
 
 	// show the slow log info by table
-	ShowTable(slowLogs, sortBy)
+	show(slowLogs, sortBy)
 }
