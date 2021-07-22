@@ -27,19 +27,19 @@ func paramsCheck(p *flag.FlagSet) {
 	params := os.Args[2:]
 	if len(params) == 0 {
 		p.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 	if err := p.Parse(os.Args[2:]); err != nil {
-		fmt.Printf("get params failed, err:%v\n", err)
+		fmt.Printf("parse params failed, err:%v\n", err)
 		p.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 }
 
 func main() {
 	if len(os.Args) < 2 {
 		usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	// get args from cmd
@@ -78,7 +78,7 @@ func main() {
 		moveSlot.Run(*mSourceAddr, *mTargetAddr, *mPass, *mSlot, *mCount)
 	default:
 		usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 }
