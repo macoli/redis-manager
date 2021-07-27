@@ -52,15 +52,15 @@ func Run(sourceAddr string, targetAddr string, password string, slot int, count 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
 	sourceMasterNodeMap, err := getMasterNodes(sourceAddr, password)
 	if err != nil {
-		fmt.Printf("get master nodes failed, err:%v\n", err)
+		fmt.Printf("获取集群所有master节点信息失败, err:%v\n", err)
 		return
 	}
 	if _, ok := sourceMasterNodeMap[targetAddr]; !ok {
-		fmt.Printf("sourceAddr and targetAddr is not same cluster")
+		fmt.Printf("源节点和目标节点不在一个集群")
 		return
 	}
 
-	fmt.Printf("Move Slot Start\n")
+	fmt.Printf("Slot %d 开始迁移\n", slot)
 	fmt.Printf("SLOT %d\n", slot)
 	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, sourceMasterNodeMap[sourceAddr])
 	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, sourceMasterNodeMap[targetAddr])
@@ -68,14 +68,14 @@ func Run(sourceAddr string, targetAddr string, password string, slot int, count 
 	//对目标节点importing
 	err = r.SetSlotImporting(targetAddr, password, slot, sourceMasterNodeMap[sourceAddr])
 	if err != nil {
-		fmt.Printf("set slot importing to the target addr failed, err:%v\n", err)
+		fmt.Printf("在目标节点执行命令:set slot importing 失败, err:%v\n", err)
 		return
 	}
 
 	//对源节点 migration
 	err = r.SetSlotMigrating(sourceAddr, password, slot, sourceMasterNodeMap[targetAddr])
 	if err != nil {
-		fmt.Printf("set slot migration to the source addr failed, err:%v\n", err)
+		fmt.Printf("在源节点执行命令:set slot migration 失败, err:%v\n", err)
 		return
 	}
 
@@ -83,6 +83,7 @@ func Run(sourceAddr string, targetAddr string, password string, slot int, count 
 	err = r.MoveData(sourceAddr, targetAddr, password, slot, count)
 	if err != nil {
 		fmt.Printf("move the slot data from source addr to the target addr failed, err:%v\n", err)
+		fmt.Printf("迁移 slot %d 的数据失败 err:%v\n", slot, err)
 		return
 	}
 
@@ -93,8 +94,8 @@ func Run(sourceAddr string, targetAddr string, password string, slot int, count 
 	}
 	err = r.SetSlotNode(masterNodes, password, slot, sourceMasterNodeMap[targetAddr])
 	if err != nil {
-		fmt.Printf("set slot to all nodes failed, err:%v\n", err)
+		fmt.Printf("为集群所有节点执行命令:set slot 失败, err:%v\n", err)
 		return
 	}
-	fmt.Printf("Move Slot Sucess\n")
+	fmt.Printf("Slot %d 完成迁移\n", slot)
 }

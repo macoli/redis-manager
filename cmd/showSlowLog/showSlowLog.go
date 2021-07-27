@@ -83,7 +83,7 @@ func dataSort(s string, data []SlowLog) {
 // show table
 func show(data []SlowLog, sortColumn string) {
 	if len(data) == 0 {
-		fmt.Println("this redis has no slow log!")
+		fmt.Println("当前redis没有慢查询信息")
 		os.Exit(0)
 	}
 	dataSort(sortColumn, data)
@@ -113,7 +113,7 @@ func Run(instance, password, redisType, sortBy string) {
 	case redisType == "standalone": //standalone type
 		ret, err := formatSlowLog(instance, password)
 		if err != nil {
-			fmt.Printf("get slowlog failed, err:%v\n", err)
+			fmt.Printf("获取慢查询失败, err:%v\n", err)
 			return
 		}
 		slowLogs = append(slowLogs, ret...)
@@ -121,14 +121,14 @@ func Run(instance, password, redisType, sortBy string) {
 		//get all instance list from cluster
 		instances, err := formatClusterNodes(instance, password)
 		if err != nil {
-			fmt.Printf("get all instances failed, err:%v\n", err)
+			fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 			return
 		}
 
 		for _, instance := range instances { //cluster type
 			ret, err := formatSlowLog(instance, password)
 			if err != nil {
-				fmt.Printf("get slowlog failed, err:%v\n", err)
+				fmt.Printf("获取慢查询失败, err:%v\n", err)
 				return
 			}
 			slowLogs = append(slowLogs, ret...)

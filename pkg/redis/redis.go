@@ -2,6 +2,7 @@ package showSlowLog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -150,4 +151,90 @@ func SetSlotNode(clusterNodes []string, password string, slot int, targetNodeID 
 		}
 	}
 	return nil
+}
+
+//ClusterGetConfig 获取集群配置并校验是否一致
+func ClusterGetConfig(addrSlice []string, password string, configArg string) (ret string, err error) {
+	for _, addr := range addrSlice {
+		// init redis conn
+		rc, err := InitStandRedis(addr, password)
+		if err != nil {
+			return "", err
+		}
+
+		argRet, err := rc.ConfigGet(CTX, configArg).Result()
+		if err != nil {
+			return "", err
+		}
+		retValue := argRet[1].(string)
+		if ret != argRet[1].(string) && ret != "" {
+			err = errors.New("集群配置项的值不一致")
+			return "", err
+		} else {
+			ret = retValue
+		}
+		rc.Close()
+	}
+	return
+}
+
+//ClusterSetConfig 批量设置集群配置
+func ClusterSetConfig(addrSlice []string, password string, configArg string, setValue string) (err error) {
+	for _, addr := range addrSlice {
+		// init redis conn
+		rc, err := InitStandRedis(addr, password)
+		if err != nil {
+			return err
+		}
+
+		err = rc.ConfigSet(CTX, configArg, setValue).Err()
+		if err != nil {
+			return err
+		}
+		rc.Close()
+	}
+	return
+}
+
+//ClusterFlushAll 集群数据清理
+func ClusterFlushAll(ClusterNodesSlice []string, password string, flushCMD string) (err error) {
+	for _, addr := range ClusterNodesSlice {
+		// init redis conn
+		rc, err := InitStandRedis(addr, password)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		//获取集群所有节点参数 cluster-node-timeout 值
+		ret, err := rc.ConfigGet(CTX, "cluster-node-timeout").Result()
+		if err != nil {
+			return err
+		}
+		clusterTimeoutValue := ret[1].(string)
+
+		//重设参数 cluster-node-timeout 值,防止在执行 FLUSHALL 命令时发生主从切换(10分钟)
+		err = rc.ConfigSet(CTX, "cluster-node-timeout", "600000").Err()
+		if err != nil {
+			return err
+		}
+
+		//对每个节点执行 FLUSHALL 命令
+		if flushCMD == "FLUSHALL" {
+			err = rc.FlushAll(CTX).Err()
+			if err != nil {
+				return err
+			}
+		} else {
+			err = rc.Do(CTX, flushCMD).Err()
+			return err
+		}
+
+		//将参数 cluster-node-timeout 还原
+		err = rc.ConfigSet(CTX, "cluster-node-timeout", clusterTimeoutValue).Err()
+		if err != nil {
+			return err
+		}
+	}
+	return
 }

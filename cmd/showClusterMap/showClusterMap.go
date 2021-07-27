@@ -93,7 +93,7 @@ func dataSort(s string, data []ClusterMap) {
 //show the cluster map by table
 func show(data []ClusterMap, sortBy string) {
 	if len(data) == 0 {
-		fmt.Println("this is nil cluster, please check the cluster status!")
+		fmt.Println("集群信息为空,请检查集群状态")
 		os.Exit(0)
 	}
 	dataSort(sortBy, data)
@@ -119,7 +119,7 @@ func show(data []ClusterMap, sortBy string) {
 func Run(instance, password, sortBy string) {
 	clusterMap, err := formatClusterNodes(instance, password)
 	if err != nil {
-		fmt.Printf("format the cluster nodes info failed, err:%v\n", err)
+		fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 	}
 	show(clusterMap, sortBy)
 }
