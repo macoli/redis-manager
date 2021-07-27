@@ -41,6 +41,7 @@ func Run() {
 	err = r.ClusterFlushAll(data.Masters, password, flushCMD)
 	if err != nil {
 		fmt.Printf("清空集群节点失败 err:%v\n", err)
+		_ = r.ClusterSetConfig(clusterNodes, password, "cluster-node-timeout", ret)
 		return
 	}
 

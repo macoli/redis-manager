@@ -155,19 +155,6 @@ func ClusterFlushAll(ClusterNodesSlice []string, password string, flushCMD strin
 		}
 		defer rc.Close()
 
-		//获取集群所有节点参数 cluster-node-timeout 值
-		ret, err := rc.ConfigGet(CTX, "cluster-node-timeout").Result()
-		if err != nil {
-			return err
-		}
-		clusterTimeoutValue := ret[1].(string)
-
-		//重设参数 cluster-node-timeout 值,防止在执行 FLUSHALL 命令时发生主从切换(10分钟)
-		err = rc.ConfigSet(CTX, "cluster-node-timeout", "600000").Err()
-		if err != nil {
-			return err
-		}
-
 		//对每个节点执行 FLUSHALL 命令
 		if flushCMD == "FLUSHALL" {
 			err = rc.FlushAll(CTX).Err()
@@ -176,12 +163,6 @@ func ClusterFlushAll(ClusterNodesSlice []string, password string, flushCMD strin
 			}
 		} else {
 			err = rc.Do(CTX, flushCMD).Err()
-			return err
-		}
-
-		//将参数 cluster-node-timeout 还原
-		err = rc.ConfigSet(CTX, "cluster-node-timeout", clusterTimeoutValue).Err()
-		if err != nil {
 			return err
 		}
 	}
