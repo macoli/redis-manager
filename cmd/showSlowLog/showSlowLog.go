@@ -1,68 +1,19 @@
 package showSlowLog
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"sort"
-	"strings"
-	"time"
+
+	"github.com/macoli/redis-manager/cmd/paramDeal"
 
 	r "github.com/macoli/redis-manager/pkg/redis"
 	t "github.com/macoli/redis-manager/pkg/table"
 )
 
-// SlowLog type
-type SlowLog struct {
-	Instance string
-	Command  string
-	Duration time.Duration
-	Time     string
-}
-
-//get slow log and format
-func formatSlowLog(addr string, password string) ([]SlowLog, error) {
-	//get slow log
-	ret, err := r.GetSlowLog(addr, password)
-	if err != nil {
-		return nil, err
-	}
-	// format slow log
-	var data []SlowLog
-	for _, item := range ret {
-		tmp := SlowLog{
-			addr,
-			strings.Join(item.Args, " "),
-			item.Duration,
-			item.Time.String(),
-		}
-		data = append(data, tmp)
-	}
-	return data, err
-}
-
-//get cluster nodes and format
-func formatClusterNodes(addr string, password string) (instances []string, err error) {
-	//get cluster nodes
-	ret, err := r.GetClusterNodes(addr, password)
-	if err != nil {
-		return nil, err
-	}
-
-	// format the ret, get all instance addr
-	clusterNodesSlice := strings.Split(ret, "\n")
-	for _, node := range clusterNodesSlice {
-		if len(node) == 0 {
-			continue
-		}
-		nodeSlice := strings.Split(node, " ")
-		instance := strings.Split(nodeSlice[1], "@")[0]
-		instances = append(instances, instance)
-	}
-	return
-}
-
 // data sort
-func dataSort(s string, data []SlowLog) {
+func dataSort(s string, data []r.SlowLog) {
 	sort.Slice(data, func(i, j int) bool {
 		switch s {
 		case "Instance":
@@ -81,14 +32,14 @@ func dataSort(s string, data []SlowLog) {
 }
 
 // show table
-func show(data []SlowLog, sortColumn string) {
+func show(data []r.SlowLog, sortColumn string) {
 	if len(data) == 0 {
 		fmt.Println("当前redis没有慢查询信息")
 		os.Exit(0)
 	}
 	dataSort(sortColumn, data)
 
-	HeaderCells := t.GenHeaderCells(SlowLog{})
+	HeaderCells := t.GenHeaderCells(r.SlowLog{})
 
 	dataInterface := make([]interface{}, len(data))
 	for i, rowMap := range data {
@@ -105,13 +56,24 @@ func show(data []SlowLog, sortColumn string) {
 	t.ShowTable(HeaderCells, BodyCells)
 }
 
+func Param() (string, string, string, string) {
+	slowLog := flag.NewFlagSet("slowlog", flag.ExitOnError)
+	addr := slowLog.String("addr", "127.0.0.1:6379", "redis地址")
+	password := slowLog.String("pass", "", "redis密码")
+	redisType := slowLog.String("type", "standalone", "redis类型选择:standalone/cluster")
+	sortBy := slowLog.String("sortby", "Time", "按不通列排序:Instance/Command/Duration/Time")
+	paramDeal.ParamsCheck(slowLog)
+	return *addr, *password, *redisType, *sortBy
+}
+
 //Run show slow log main func
-func Run(instance, password, redisType, sortBy string) {
+func Run() {
+	addr, password, redisType, sortBy := Param()
 	// get all slow log info
-	var slowLogs []SlowLog
+	var slowLogs []r.SlowLog
 	switch {
 	case redisType == "standalone": //standalone type
-		ret, err := formatSlowLog(instance, password)
+		ret, err := r.FormatSlowLog(addr, password)
 		if err != nil {
 			fmt.Printf("获取慢查询失败, err:%v\n", err)
 			return
@@ -119,14 +81,14 @@ func Run(instance, password, redisType, sortBy string) {
 		slowLogs = append(slowLogs, ret...)
 	case redisType == "cluster":
 		//get all instance list from cluster
-		instances, err := formatClusterNodes(instance, password)
+		data, err := r.FormatClusterNodes(addr, password)
 		if err != nil {
 			fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 			return
 		}
-
-		for _, instance := range instances { //cluster type
-			ret, err := formatSlowLog(instance, password)
+		clusterNodes := append(data.Masters, data.Slaves...)
+		for _, instance := range clusterNodes { //cluster type
+			ret, err := r.FormatSlowLog(instance, password)
 			if err != nil {
 				fmt.Printf("获取慢查询失败, err:%v\n", err)
 				return

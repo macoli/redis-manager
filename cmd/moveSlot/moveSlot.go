@@ -1,8 +1,11 @@
 package moveSlot
 
 import (
+	"flag"
 	"fmt"
-	"strings"
+	"os"
+
+	"github.com/macoli/redis-manager/cmd/paramDeal"
 
 	r "github.com/macoli/redis-manager/pkg/redis"
 )
@@ -16,64 +19,52 @@ import (
 //6.重复执行步骤 4 和 5,直到 slot 的所有数据都迁移到目标节点
 //7.向集群内所有主节点发送 cluster setslot [slot] node [target nodeID],以通知 slot 已经分配给了目标节点
 
-//get cluster master nodes and format
-func getMasterNodes(addr string, password string) (masterNodeMap map[string]string, err error) {
-	masterNodeMap = make(map[string]string)
+func Param() (string, string, string, int, int) {
+	moveSlot := flag.NewFlagSet("clustermap", flag.ExitOnError)
+	sourceAddr := moveSlot.String("saddr", "127.0.0.1:6379", "要迁移slot的源地址")
+	targetAddr := moveSlot.String("taddr", "127.0.0.1:6379", "要迁移slot的目的地址")
+	password := moveSlot.String("pass", "", "redis集群密码,默认为空")
+	slot := moveSlot.Int("slot", -1, "需要迁移的slot,范围:0-16384")
+	count := moveSlot.Int("count", 100, "每次迁移key的数量")
+	paramDeal.ParamsCheck(moveSlot)
 
-	//get cluster nodes
-	ret, err := r.GetClusterNodes(addr, password)
-	if err != nil {
-		return nil, err
+	if *slot < 0 || *slot > 16384 {
+		fmt.Printf("slot 值必须在0-16384")
+		os.Exit(1)
 	}
-	// format the ret, get all instance addr
-	clusterNodesSlice := strings.Split(ret, "\n")
-	for _, node := range clusterNodesSlice {
-		if len(node) == 0 {
-			continue
-		}
-		nodeSlice := strings.Split(node, " ")
 
-		role := nodeSlice[2]
-		if strings.Contains(role, "myself") {
-			role = strings.Split(role, ",")[1]
-		}
-
-		if role == "master" {
-			masterAddr := strings.Split(nodeSlice[1], "@")[0]
-			masterNodeID := nodeSlice[0]
-			masterNodeMap[masterAddr] = masterNodeID
-		}
-	}
-	return
+	return *sourceAddr, *targetAddr, *password, *slot, *count
 }
 
 // Run 迁移指定 slot 到指定节点的执行函数
-func Run(sourceAddr string, targetAddr string, password string, slot int, count int) {
+func Run() {
+	sourceAddr, targetAddr, password, slot, count := Param()
+
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
-	sourceMasterNodeMap, err := getMasterNodes(sourceAddr, password)
+	data, err := r.FormatClusterNodes(sourceAddr, password)
 	if err != nil {
 		fmt.Printf("获取集群所有master节点信息失败, err:%v\n", err)
 		return
 	}
-	if _, ok := sourceMasterNodeMap[targetAddr]; !ok {
+	if _, ok := data.AddrToID[targetAddr]; !ok {
 		fmt.Printf("源节点和目标节点不在一个集群")
 		return
 	}
 
 	fmt.Printf("Slot %d 开始迁移\n", slot)
 	fmt.Printf("SLOT %d\n", slot)
-	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, sourceMasterNodeMap[sourceAddr])
-	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, sourceMasterNodeMap[targetAddr])
+	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, data.AddrToID[sourceAddr])
+	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, data.AddrToID[targetAddr])
 
 	//对目标节点importing
-	err = r.SetSlotImporting(targetAddr, password, slot, sourceMasterNodeMap[sourceAddr])
+	err = r.SetSlotImporting(targetAddr, password, slot, data.AddrToID[sourceAddr])
 	if err != nil {
 		fmt.Printf("在目标节点执行命令:set slot importing 失败, err:%v\n", err)
 		return
 	}
 
 	//对源节点 migration
-	err = r.SetSlotMigrating(sourceAddr, password, slot, sourceMasterNodeMap[targetAddr])
+	err = r.SetSlotMigrating(sourceAddr, password, slot, data.AddrToID[targetAddr])
 	if err != nil {
 		fmt.Printf("在源节点执行命令:set slot migration 失败, err:%v\n", err)
 		return
@@ -88,11 +79,7 @@ func Run(sourceAddr string, targetAddr string, password string, slot int, count 
 	}
 
 	//通告整个集群 slot 已迁移到目标节点
-	var masterNodes []string
-	for addr, _ := range sourceMasterNodeMap {
-		masterNodes = append(masterNodes, addr)
-	}
-	err = r.SetSlotNode(masterNodes, password, slot, sourceMasterNodeMap[targetAddr])
+	err = r.SetSlotNode(data.Masters, password, slot, data.AddrToID[targetAddr])
 	if err != nil {
 		fmt.Printf("为集群所有节点执行命令:set slot 失败, err:%v\n", err)
 		return
