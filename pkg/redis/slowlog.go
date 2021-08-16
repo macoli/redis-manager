@@ -16,13 +16,13 @@ func GetSlowLog(addr string, password string) (ret []redis.SlowLog, err error) {
 	defer rc.Close()
 
 	// get slow log numbers
-	nums, err := rc.Do(CTX, "slowlog", "len").Result()
+	nums, err := rc.Do(ctx, "slowlog", "len").Result()
 	if err != nil {
 		return nil, err
 	}
 
 	// get slow log info
-	ret, err = rc.SlowLogGet(CTX, nums.(int64)).Result()
+	ret, err = rc.SlowLogGet(ctx, nums.(int64)).Result()
 	if err != nil {
 		return nil, err
 	}

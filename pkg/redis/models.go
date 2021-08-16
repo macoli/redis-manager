@@ -1,6 +1,13 @@
 package redis
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+var (
+	ctx = context.Background()
+)
 
 type SlowLog struct {
 	Instance string
@@ -14,6 +21,7 @@ type ClusterNode struct {
 	MasterAddr string
 	SlaveAddr  string
 	SlaveID    string
+	SlotStr    string
 }
 
 type ClusterNodesMap struct {

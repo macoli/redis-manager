@@ -3,11 +3,11 @@ package moveSlot
 import (
 	"flag"
 	"fmt"
-	"os"
+	"strconv"
+	"strings"
 
 	"github.com/macoli/redis-manager/cmd/paramDeal"
-
-	r "github.com/macoli/redis-manager/pkg/redis"
+	"github.com/macoli/redis-manager/pkg/redis"
 )
 
 //迁移指定 slot 到指定节点
@@ -19,29 +19,65 @@ import (
 //6.重复执行步骤 4 和 5,直到 slot 的所有数据都迁移到目标节点
 //7.向集群内所有主节点发送 cluster setslot [slot] node [target nodeID],以通知 slot 已经分配给了目标节点
 
-func Param() (string, string, string, int, int) {
+func Param() (string, string, string, string, int) {
 	moveSlot := flag.NewFlagSet("clustermap", flag.ExitOnError)
 	sourceAddr := moveSlot.String("saddr", "127.0.0.1:6379", "要迁移slot的源地址")
 	targetAddr := moveSlot.String("taddr", "127.0.0.1:6379", "要迁移slot的目的地址")
 	password := moveSlot.String("pass", "", "redis集群密码,默认为空")
-	slot := moveSlot.Int("slot", -1, "需要迁移的slot,范围:0-16384")
-	count := moveSlot.Int("count", 100, "每次迁移key的数量")
+	slot := moveSlot.String("slot", "", "需要迁移的slot,范围:0-16384,"+
+		"格式:1,100-100,355,2000-2002,默认迁移源 redis 的所有 slot")
+	count := moveSlot.Int("count", 1000, "每次迁移key的数量")
 	paramDeal.ParamsCheck(moveSlot)
-
-	if *slot < 0 || *slot > 16384 {
-		fmt.Printf("slot 值必须在0-16384")
-		os.Exit(1)
-	}
 
 	return *sourceAddr, *targetAddr, *password, *slot, *count
 }
 
+// 校验获取到的 slotStr,并格式化
+func formatSlotStr(slotStr string) (slots []int64) {
+	// 如果 slotStr 是数字,说明此次只迁移一个 slot
+	slot, er := strconv.ParseInt(slotStr, 10, 64)
+	if er == nil {
+		redis.CheckSlot(slot) // 校验 slot 是否在 0-16384
+		slots = append(slots, slot)
+		return
+	}
+	// 如果 slotStr 是非数字,校验格式是否正确(1,100-100,355,2000-2002),并格式化
+	for _, item := range strings.Split(slotStr, ",") {
+		if strings.Contains(item, "-") { // 格式化类型: "1-100"
+			start, sErr := strconv.ParseInt(strings.Split(item, "-")[0], 10, 64)
+			end, eErr := strconv.ParseInt(strings.Split(item, "-")[1], 10, 64)
+			if sErr != nil || eErr != nil {
+				fmt.Printf("格式化slotStr: %s 失败\n", item)
+				return
+			}
+			for i := start; i <= end; i++ {
+				redis.CheckSlot(i)
+				slots = append(slots, i)
+			}
+
+		} else {
+			slot, err := strconv.ParseInt(item, 10, 64)
+			if err == nil { // 格式化类型: "1111"
+				redis.CheckSlot(slot) // 校验 slot 是否在 0-16384
+				slots = append(slots, slot)
+				return
+			} else { // 非法字符
+				fmt.Printf("格式化slotStr: %s 失败\n", item)
+				return
+			}
+
+		}
+	}
+
+	return
+}
+
 // Run 迁移指定 slot 到指定节点的执行函数
 func Run() {
-	sourceAddr, targetAddr, password, slot, count := Param()
+	sourceAddr, targetAddr, password, slotStr, count := Param()
 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
-	data, err := r.FormatClusterNodes(sourceAddr, password)
+	data, err := redis.FormatClusterNodes(sourceAddr, password)
 	if err != nil {
 		fmt.Printf("获取集群所有master节点信息失败, err:%v\n", err)
 		return
@@ -51,38 +87,12 @@ func Run() {
 		return
 	}
 
-	fmt.Printf("Slot %d 开始迁移\n", slot)
-	fmt.Printf("SLOT %d\n", slot)
-	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, data.AddrToID[sourceAddr])
-	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, data.AddrToID[targetAddr])
-
-	//对目标节点importing
-	err = r.SetSlotImporting(targetAddr, password, slot, data.AddrToID[sourceAddr])
-	if err != nil {
-		fmt.Printf("在目标节点执行命令:set slot importing 失败, err:%v\n", err)
-		return
+	var slots []int64
+	if slotStr == "" { // 如果 slotStr 为空,获取 sourceAddr 上所有的 slot
+		slots = redis.GetAddrAllSlots(data, sourceAddr)
+	} else { // 校验并格式化slotStr
+		slots = formatSlotStr(slotStr)
 	}
 
-	//对源节点 migration
-	err = r.SetSlotMigrating(sourceAddr, password, slot, data.AddrToID[targetAddr])
-	if err != nil {
-		fmt.Printf("在源节点执行命令:set slot migration 失败, err:%v\n", err)
-		return
-	}
-
-	//对源节点migrate 迁移 slot 数据
-	err = r.MoveData(sourceAddr, targetAddr, password, slot, count)
-	if err != nil {
-		fmt.Printf("move the slot data from source addr to the target addr failed, err:%v\n", err)
-		fmt.Printf("迁移 slot %d 的数据失败 err:%v\n", slot, err)
-		return
-	}
-
-	//通告整个集群 slot 已迁移到目标节点
-	err = r.SetSlotNode(data.Masters, password, slot, data.AddrToID[targetAddr])
-	if err != nil {
-		fmt.Printf("为集群所有节点执行命令:set slot 失败, err:%v\n", err)
-		return
-	}
-	fmt.Printf("Slot %d 完成迁移\n", slot)
+	redis.MoveSlot(sourceAddr, targetAddr, password, slots, count, data)
 }

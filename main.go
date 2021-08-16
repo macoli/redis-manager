@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/macoli/redis-manager/cmd/check"
+
 	"github.com/macoli/redis-manager/cmd/clusterConfig"
 	"github.com/macoli/redis-manager/cmd/clusterDataClear"
 	"github.com/macoli/redis-manager/cmd/moveSlot"
@@ -15,10 +17,11 @@ func Usage() {
 	fmt.Fprintf(os.Stdout, `Usage of showSlowLog-manager:
 Options:
 	slowlog         慢查询信息展示
-	moveslot        集群迁移指定的slot到指定节点(仅支持迁移单个slot)
+	moveslot        集群迁移指定的slot到指定节点
 	clustermap      集群映射关系展示
 	clusterclear    集群数据清空
 	clusterconfig   集群配置相关:获取配置项,批量修改配置项
+	check           集群配置相关:获取配置项,批量修改配置项
 `)
 }
 func main() {
@@ -37,6 +40,8 @@ func main() {
 		clusterDataClear.Run()
 	case "clusterconfig":
 		clusterConfig.Run()
+	case "check":
+		check.Run()
 	default:
 		Usage()
 		os.Exit(0)
