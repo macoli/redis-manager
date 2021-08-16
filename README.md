@@ -16,7 +16,7 @@ go buid main.go
 Usage of redis-manager:
 Options:
         slowlog         慢查询信息展示
-        moveslot        集群迁移指定的slot到指定节点(仅支持迁移单个slot)
+        moveslot        集群迁移指定的slot到指定节点
         clustermap      集群映射关系展示
         clusterclear    集群数据清空
         clusterconfig   集群配置相关:获取配置项,批量修改配置项
