@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -8,96 +9,19 @@ import (
 	"time"
 )
 
-////SetSlotImporting 对目标节点执行 cluster setslot [slot] importing [source nodeID]
-//func SetSlotImporting(targetAddr string, password string, slot int, sourceNodeID string) (err error) {
-//	rc, err := InitStandRedis(targetAddr, password)
-//	if err != nil {
-//		return
-//	}
-//	defer rc.Close()
-//	_, err = rc.Do(ctx, "cluster", "setslot", slot, "importing", sourceNodeID).Result()
-//	if err != nil {
-//		return
-//	}
-//	return nil
-//}
-//
-////SetSlotMigrating 对源节点发送 cluster setslot [slot] migrating [target nodeID]
-//func SetSlotMigrating(sourceAddr string, password string, slot int, targetNodeID string) (err error) {
-//	rc, err := InitStandRedis(sourceAddr, password)
-//	if err != nil {
-//		return err
-//	}
-//	defer rc.Close()
-//	_, err = rc.Do(ctx, "cluster", "setslot", slot, "migrating", targetNodeID).Result()
-//	if err != nil {
-//		return err
-//	}
-//	return nil
-//}
-//
-////MoveData 迁移 slot 数据
-//func MoveData(sourceAddr string, targetAddr string, password string, slot int, count int) (err error) {
-//	//连接源节点
-//	rc, err := InitStandRedis(sourceAddr, password)
-//	if err != nil {
-//		return err
-//	}
-//	defer rc.Close()
-//
-//	//获取目标节点的 ip 和 port
-//	targetIP := strings.Split(targetAddr, ":")[0]
-//	targetPort := strings.Split(targetAddr, ":")[1]
-//
-//	//循环迁移 slot 的数据到目标节点
-//	for {
-//		ret := rc.ClusterGetKeysInSlot(ctx, slot, count)
-//		//fmt.Printf("%#v\n", ret)
-//		for _, key := range ret.Val() {
-//			_, err := rc.Migrate(ctx, targetIP, targetPort, key, 0, time.Second*10).Result()
-//			if err != nil {
-//				return err
-//			}
-//			//fmt.Printf("migrate result:%v\n", ret)
-//			fmt.Printf("#")
-//		}
-//		if len(ret.Val()) < count {
-//			fmt.Printf("\n")
-//			break
-//		}
-//	}
-//	return nil
-//}
-//
-////SetSlotNode 向集群内所有主节点发送 cluster setslot [slot] node [target nodeID],以通知 slot 已经分配给了目标节点
-//func SetSlotNode(clusterNodes []string, password string, slot int, targetNodeID string) (err error) {
-//	for _, addr := range clusterNodes {
-//		rc, err := InitStandRedis(addr, password)
-//		if err != nil {
-//			return err
-//		}
-//
-//		_, err = rc.Do(ctx, "cluster", "setslot", slot, "node", targetNodeID).Result()
-//		if err != nil {
-//			return err
-//		}
-//	}
-//	return nil
-//}
-
-// CheckSlot 校验 slot 是否合法范围中: 0-16384
-func CheckSlot(slot int64) {
+// CheckSlotParam 校验 slot 是否合法范围中: 0-16384
+func CheckSlotParam(slot int64) {
 	if slot < 0 || slot > 16384 {
 		fmt.Printf("slot 值必须在: 0-16384")
 		os.Exit(1)
 	}
 }
 
-// GetAddrAllSlots 从 ClusterNodesMap 中获取对应 redis 实例的所有 slot
-func GetAddrAllSlots(data *ClusterNodesMap, addr string) (slots []int64) {
+// GetClusterAddrSlots 从 FormatClusterNodes 中获取对应 redis 实例的所有 slot
+func GetClusterAddrSlots(data *ClusterNodesInfoFormat, addr string) (slots []int64, err error) {
 	// 获取对应 addr 的 slotStr 信息
 	var slotStr string
-	for _, Node := range data.ClusterNodesDetail {
+	for _, Node := range data.MasterSlaveMaps {
 		if Node.MasterAddr == addr {
 			slotStr = Node.SlotStr
 		}
@@ -113,21 +37,21 @@ func GetAddrAllSlots(data *ClusterNodesMap, addr string) (slots []int64) {
 			start, sErr := strconv.ParseInt(strings.Split(item, "-")[0], 10, 64)
 			end, eErr := strconv.ParseInt(strings.Split(item, "-")[1], 10, 64)
 			if sErr != nil || eErr != nil {
-				fmt.Printf("格式化slotStr: %s 失败\n", item)
-				return
+				errMsg := fmt.Sprintf("格式化 %s 的 slot 信息 %s 失败\n", addr, item)
+				return nil, errors.New(errMsg)
 			}
 			for i := start; i <= end; i++ {
-				CheckSlot(i)
+				CheckSlotParam(i)
 				slots = append(slots, i)
 			}
 
 		} else { // 格式化类型: "1111"
 			slot, err := strconv.ParseInt(item, 10, 64)
 			if err != nil {
-				fmt.Printf("格式化slotStr: %s 失败\n", item)
-				return
+				errMsg := fmt.Sprintf("格式化 %s 的 slot 信息 %s 失败\n", addr, item)
+				return nil, errors.New(errMsg)
 			}
-			CheckSlot(slot)
+			CheckSlotParam(slot)
 			slots = append(slots, slot)
 		}
 	}
@@ -135,19 +59,26 @@ func GetAddrAllSlots(data *ClusterNodesMap, addr string) (slots []int64) {
 }
 
 // MoveSlot 迁移 slot
-func MoveSlot(sourceAddr, targetAddr, password string, slots []int64, count int, data *ClusterNodesMap) {
+/*
+1.指定 slot,slot所在源节点,slot 要迁移的目的节点
+2.对目标节点发送 cluster setslot [slot] importing [source nodeID]
+3.对源节点发送 cluster setslot [slot] migrating [target nodeID]
+4.源节点循环执行 cluster getkeysinslot [slot] [count]  --获取 count 个属于 slot 的键
+5.源节点执行批量迁移 key 的命令 migrate [target ip] [target port] "" 0 [timeout] keys [keys...]
+6.重复执行步骤 4 和 5,直到 slot 的所有数据都迁移到目标节点
+7.向集群内所有主节点发送 cluster setslot [slot] node [target nodeID],以通知 slot 已经分配给了目标节点
+*/
+func MoveSlot(sourceAddr, targetAddr, password string, slots []int64, count int, data *ClusterNodesInfoFormat) error {
 	// 建立到 sourceAddr 的连接
 	sourceClient, err := InitStandRedis(sourceAddr, password)
 	if err != nil {
-		fmt.Printf("连接源地址: %s 失败, err:%v\n", sourceAddr, err)
-		return
+		return err
 	}
 
 	// 建立到 targetAddr 的连接
 	targetClient, err := InitStandRedis(targetAddr, password)
 	if err != nil {
-		fmt.Printf("连接目标地址地址: %s 失败, err:%v\n", targetAddr, err)
-		return
+		return err
 	}
 
 	// 函数结束后关闭 redis 连接
@@ -164,15 +95,15 @@ func MoveSlot(sourceAddr, targetAddr, password string, slots []int64, count int,
 		// 对目标节点importing 命令: cluster setslot [slot] importing [source nodeID]
 		_, err = targetClient.Do(ctx, "cluster", "setslot", slot, "importing", data.AddrToID[sourceAddr]).Result()
 		if err != nil {
-			fmt.Printf("在目标节点执行命令:set slot importing 失败, err:%v\n", err)
-			return
+			errMsg := fmt.Sprintf("在目标节点执行命令:set slot importing 失败, err:%v\n", err)
+			return errors.New(errMsg)
 		}
 
 		// 对源节点 migration 命令: cluster setslot [slot] migrating [target nodeID]
 		_, err = sourceClient.Do(ctx, "cluster", "setslot", slot, "migrating", data.AddrToID[targetAddr]).Result()
 		if err != nil {
-			fmt.Printf("在源节点执行命令:set slot migration 失败, err:%v\n", err)
-			return
+			errMsg := fmt.Sprintf("在源节点执行命令:set slot migration 失败, err:%v\n", err)
+			return errors.New(errMsg)
 		}
 
 		// 迁移 slot 中的数据
@@ -186,8 +117,8 @@ func MoveSlot(sourceAddr, targetAddr, password string, slots []int64, count int,
 			for _, key := range ret.Val() {
 				_, err := sourceClient.Migrate(ctx, targetIP, targetPort, key, 0, time.Second*10).Result()
 				if err != nil {
-					fmt.Printf("迁移slot: %d 中的数据失败, err:%v\n", slot, err)
-					return
+					errMsg := fmt.Sprintf("迁移slot: %d 中的数据失败, err:%v\n", slot, err)
+					return errors.New(errMsg)
 				}
 				//fmt.Printf("#")  // 打印迁移 key 进度
 			}
@@ -201,19 +132,19 @@ func MoveSlot(sourceAddr, targetAddr, password string, slots []int64, count int,
 		for _, addr := range data.Masters {
 			rc, err := InitStandRedis(addr, password)
 			if err != nil {
-				fmt.Printf("连接 redis: %s 失败, err:%v\n", addr, err)
-				return
+				errMsg := fmt.Sprintf("连接 redis: %s 失败, err:%v\n", addr, err)
+				return errors.New(errMsg)
 			}
 
 			_, err = rc.Do(ctx, "cluster", "setslot", slot, "node", data.AddrToID[targetAddr]).Result()
 			if err != nil {
-				fmt.Printf("在 redis: %s 上执行命令: cluster setslot 失败, err:%v\n", addr, err)
-				return
+				errMsg := fmt.Sprintf("在 redis: %s 上执行命令: cluster setslot 失败, err:%v\n", addr, err)
+				return errors.New(errMsg)
 			}
 			rc.Close()
 		}
 
 		fmt.Printf("Slot %d 完成迁移\n", slot)
 	}
-
+	return nil
 }

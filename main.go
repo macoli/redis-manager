@@ -21,7 +21,7 @@ Options:
 	clustermap      集群映射关系展示
 	clusterclear    集群数据清空
 	clusterconfig   集群配置相关:获取配置项,批量修改配置项
-	check           集群配置相关:获取配置项,批量修改配置项
+	check           redis 状态检查
 `)
 }
 func main() {

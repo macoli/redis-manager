@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -13,14 +14,13 @@ func FormatRedisInfo(addr, password string) (infoMap map[string]string, err erro
 	// 创建 redis 连接
 	rc, err := InitStandRedis(addr, password)
 	if err != nil {
-		fmt.Printf("连接 redis: %s 失败, err:%v\n", addr, err)
-		return
+		return nil, err
 	}
 
 	ret, err := rc.Info(ctx).Result()
 	if err != nil {
-		fmt.Printf("获取 redis: %s 的 info 信息失败, err:%v", addr, err)
-		return
+		errMsg := fmt.Sprintf("获取 redis: %s 的 info 信息失败, err:%v", addr, err)
+		return nil, errors.New(errMsg)
 	}
 
 	// 按行分割字符串

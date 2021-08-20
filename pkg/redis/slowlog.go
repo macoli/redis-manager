@@ -1,42 +1,35 @@
 package redis
 
 import (
+	"errors"
+	"fmt"
 	"strings"
-
-	"github.com/go-redis/redis/v8"
 )
 
-//GetSlowLog get slow log info
-func GetSlowLog(addr string, password string) (ret []redis.SlowLog, err error) {
-	// init showSlowLog conn
+// FormatSlowLog 获取 redis 慢查询并格式化
+func FormatSlowLog(addr string, password string) ([]SlowLog, error) {
+	// 创建 redis 连接
 	rc, err := InitStandRedis(addr, password)
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
 
-	// get slow log numbers
+	// 获取 redis 慢查询数量
 	nums, err := rc.Do(ctx, "slowlog", "len").Result()
 	if err != nil {
-		return nil, err
+		errMsg := fmt.Sprintf("获取 redis 实例: %s 的慢查询数量失败, err:%v\n", addr, err)
+		return nil, errors.New(errMsg)
 	}
 
-	// get slow log info
-	ret, err = rc.SlowLogGet(ctx, nums.(int64)).Result()
+	// 获取 redis 的所有慢查询日志
+	ret, err := rc.SlowLogGet(ctx, nums.(int64)).Result()
 	if err != nil {
-		return nil, err
+		errMsg := fmt.Sprintf("获取 redis 实例: %s 的慢查询日志失败, err:%v\n", addr, err)
+		return nil, errors.New(errMsg)
 	}
-	return
-}
 
-//FormatSlowLog get slow log and format
-func FormatSlowLog(addr string, password string) ([]SlowLog, error) {
-	//get slow log
-	ret, err := GetSlowLog(addr, password)
-	if err != nil {
-		return nil, err
-	}
-	// format slow log
+	// 格式化获取到的慢查询日志
 	var data []SlowLog
 	for _, item := range ret {
 		tmp := SlowLog{

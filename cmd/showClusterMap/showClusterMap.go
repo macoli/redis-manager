@@ -8,13 +8,13 @@ import (
 
 	"github.com/macoli/redis-manager/cmd/paramDeal"
 
-	t "github.com/macoli/redis-manager/pkg/table"
+	"github.com/macoli/redis-manager/pkg/table"
 
-	r "github.com/macoli/redis-manager/pkg/redis"
+	"github.com/macoli/redis-manager/pkg/redis"
 )
 
-// data sort
-func dataSort(s string, data []*r.ClusterNode) {
+// dataSort 排序
+func dataSort(s string, data []*redis.MasterSlaveMap) {
 	sort.Slice(data, func(i, j int) bool {
 		switch s {
 		case "MasterID":
@@ -32,15 +32,15 @@ func dataSort(s string, data []*r.ClusterNode) {
 	})
 }
 
-//show the cluster map by table
-func show(data []*r.ClusterNode, sortBy string) {
+//show 通过表格展示
+func show(data []*redis.MasterSlaveMap, sortBy string) {
 	if len(data) == 0 {
 		fmt.Println("集群信息为空,请检查集群状态")
 		os.Exit(0)
 	}
 	dataSort(sortBy, data)
 
-	HeaderCells := t.GenHeaderCells(r.ClusterNode{})
+	HeaderCells := table.GenHeaderCells(redis.MasterSlaveMap{})
 
 	dataInterface := make([]interface{}, len(data))
 	for i, rowMap := range data {
@@ -52,12 +52,13 @@ func show(data []*r.ClusterNode, sortBy string) {
 		}
 		dataInterface[i] = row
 	}
-	BodyCells := t.GenBodyCells(dataInterface)
+	BodyCells := table.GenBodyCells(dataInterface)
 
-	t.ShowTable(HeaderCells, BodyCells)
+	table.ShowTable(HeaderCells, BodyCells)
 }
 
-func Param() (string, string, string) {
+// param 获取参数
+func param() (string, string, string) {
 	clusterMap := flag.NewFlagSet("clustermap", flag.ExitOnError)
 	addr := clusterMap.String("addr", "127.0.0.1:6379", "redis地址")
 	password := clusterMap.String("pass", "", "redis密码")
@@ -67,13 +68,14 @@ func Param() (string, string, string) {
 	return *addr, *password, *sortBy
 }
 
-// Run show cluster map main
+// Run 获取集群关系并通过表格展示
 func Run() {
-	addr, password, sortBy := Param()
+	addr, password, sortBy := param()
 
-	data, err := r.FormatClusterNodes(addr, password)
+	data, err := redis.FormatClusterNodes(addr, password)
 	if err != nil {
 		fmt.Printf("获取集群节点信息失败, err:%v\n", err)
+		return
 	}
-	show(data.ClusterNodesDetail, sortBy)
+	show(data.MasterSlaveMaps, sortBy)
 }

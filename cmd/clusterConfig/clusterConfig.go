@@ -9,7 +9,8 @@ import (
 	r "github.com/macoli/redis-manager/pkg/redis"
 )
 
-func Param() (string, string, string, string, string) {
+// param 获取参数
+func param() (string, string, string, string, string) {
 	clusterConfig := flag.NewFlagSet("clusterconfig", flag.ExitOnError)
 	addr := clusterConfig.String("addr", "127.0.0.1:6379", "redis地址")
 	password := clusterConfig.String("password", "", "redis集群密码")
@@ -22,7 +23,7 @@ func Param() (string, string, string, string, string) {
 }
 
 func Run() {
-	addr, password, opType, config, setValue := Param()
+	addr, password, opType, config, setValue := param()
 
 	//获取集群节点
 	data, err := r.FormatClusterNodes(addr, password)

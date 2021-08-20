@@ -8,23 +8,23 @@ import (
 	"github.com/alexeyco/simpletable"
 )
 
-//ShowTable Show the data by table
+//ShowTable 通过表格展示数据
 func ShowTable(headerCells []*simpletable.Cell, bodyCells [][]*simpletable.Cell) {
-	//new a table
+	// 新建表格
 	table := simpletable.New()
-	//set table header
+	// 设置表头
 	table.Header = &simpletable.Header{
 		Cells: headerCells,
 	}
-	//set table body
+	// 填充表数据
 	table.Body.Cells = bodyCells
-	//table style
+	// 设置表格样式
 	table.SetStyle(simpletable.StyleUnicode)
-	//print the table
+	// 打印表格
 	fmt.Println(table.String())
 }
 
-//GetHeaderCells Generate table header data
+//GetHeaderCells 生成表头
 func GenHeaderCells(m interface{}) []*simpletable.Cell {
 	t := reflect.TypeOf(m)
 	Cells := []*simpletable.Cell{
@@ -37,7 +37,7 @@ func GenHeaderCells(m interface{}) []*simpletable.Cell {
 	return Cells
 }
 
-//GetBodyCells Generate table body data
+//GetBodyCells 生成表数据
 func GenBodyCells(m []interface{}) [][]*simpletable.Cell {
 	var Cells [][]*simpletable.Cell
 	cnt := 1
