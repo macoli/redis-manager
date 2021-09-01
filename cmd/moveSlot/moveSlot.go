@@ -12,7 +12,7 @@ import (
 )
 
 func Param() (string, string, string, string, int) {
-	moveSlot := flag.NewFlagSet("clustermap", flag.ExitOnError)
+	moveSlot := flag.NewFlagSet("moveslot", flag.ExitOnError)
 	sourceAddr := moveSlot.String("saddr", "127.0.0.1:6379", "要迁移slot的源地址")
 	targetAddr := moveSlot.String("taddr", "127.0.0.1:6379", "要迁移slot的目的地址")
 	password := moveSlot.String("pass", "", "redis集群密码,默认为空")

@@ -14,7 +14,7 @@ import (
 )
 
 func Usage() {
-	fmt.Fprintf(os.Stdout, `Usage of showSlowLog-manager:
+	fmt.Fprintf(os.Stdout, `Usage of redis-manager:
 Options:
 	slowlog         慢查询信息展示
 	moveslot        集群迁移指定的slot到指定节点
