@@ -52,10 +52,10 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 			if err == nil { // 格式化类型: "1111"
 				redis.CheckSlotParam(slot) // 校验 slot 是否在 0-16384
 				slots = append(slots, slot)
-				return
+				return slots, nil
 			} else { // 非法字符
 				fmt.Printf("格式化slotStr: %s 失败\n", item)
-				return
+				return nil, err
 			}
 
 		}
