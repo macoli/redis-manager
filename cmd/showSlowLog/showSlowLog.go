@@ -1,12 +1,11 @@
 package showSlowLog
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"sort"
 
-	"github.com/macoli/redis-manager/cmd/paramDeal"
+	"github.com/macoli/redis-manager/pkg/param"
 
 	"github.com/macoli/redis-manager/pkg/redis"
 	"github.com/macoli/redis-manager/pkg/table"
@@ -56,20 +55,9 @@ func show(data []redis.SlowLog, sortColumn string) {
 	table.ShowTable(HeaderCells, BodyCells)
 }
 
-// param 参数获取
-func param() (string, string, string, string) {
-	slowLog := flag.NewFlagSet("slowlog", flag.ExitOnError)
-	addr := slowLog.String("addr", "127.0.0.1:6379", "redis地址")
-	password := slowLog.String("pass", "", "redis密码")
-	redisType := slowLog.String("type", "standalone", "redis类型选择:standalone/cluster")
-	sortBy := slowLog.String("sortby", "Time", "按不通列排序:Instance/Command/Duration/Time")
-	paramDeal.ParamsCheck(slowLog)
-	return *addr, *password, *redisType, *sortBy
-}
-
 //Run 获取 redis 慢查询
 func Run() {
-	addr, password, redisType, sortBy := param()
+	addr, password, redisType, sortBy := param.SlowLog()
 	// 获取 redis 实例的慢查询日志
 	var slowLogs []redis.SlowLog
 	switch {

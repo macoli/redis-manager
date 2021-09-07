@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/macoli/redis-manager/pkg/slice"
 
@@ -233,9 +234,18 @@ func ClusterFlushAll(data *ClusterNodesInfoFormat, password, flushCMD string) (e
 
 	for _, addr := range clusterNodes {
 		// 连接 redis
-		rc, err := InitStandRedis(addr, password)
+		rc := redis.NewClient(&redis.Options{
+			Addr:        addr,
+			Password:    password,
+			DB:          0,
+			PoolSize:    100,
+			DialTimeout: time.Minute * 30,
+			ReadTimeout: time.Minute * 30,
+		})
+		_, err := rc.Ping(ctx).Result()
 		if err != nil {
-			return err
+			errMsg := fmt.Sprintf("连接 redis 实例: %s 失败, err:%v\n", addr, err)
+			return errors.New(errMsg)
 		}
 		defer rc.Close()
 

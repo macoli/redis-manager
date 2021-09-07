@@ -1,12 +1,11 @@
 package showClusterMap
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"sort"
 
-	"github.com/macoli/redis-manager/cmd/paramDeal"
+	"github.com/macoli/redis-manager/pkg/param"
 
 	"github.com/macoli/redis-manager/pkg/table"
 
@@ -57,20 +56,9 @@ func show(data []*redis.MasterSlaveMap, sortBy string) {
 	table.ShowTable(HeaderCells, BodyCells)
 }
 
-// param 获取参数
-func param() (string, string, string) {
-	clusterMap := flag.NewFlagSet("clustermap", flag.ExitOnError)
-	addr := clusterMap.String("addr", "127.0.0.1:6379", "redis地址")
-	password := clusterMap.String("pass", "", "redis密码")
-	sortBy := clusterMap.String("sortby", "MasterAddr",
-		"按不通列排序:MasterID/MasterAddr/slaveAddr/slaveID")
-	paramDeal.ParamsCheck(clusterMap)
-	return *addr, *password, *sortBy
-}
-
 // Run 获取集群关系并通过表格展示
 func Run() {
-	addr, password, sortBy := param()
+	addr, password, sortBy := param.ClusterMap()
 
 	data, err := redis.FormatClusterNodes(addr, password)
 	if err != nil {

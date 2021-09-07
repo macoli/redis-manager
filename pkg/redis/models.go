@@ -2,19 +2,11 @@ package redis
 
 import (
 	"context"
-	"time"
 )
 
 var (
 	ctx = context.Background()
 )
-
-type SlowLog struct {
-	Instance string
-	Command  string
-	Duration time.Duration
-	Time     string
-}
 
 type ClusterNode struct {
 	ID          string   // 当前节点 ID

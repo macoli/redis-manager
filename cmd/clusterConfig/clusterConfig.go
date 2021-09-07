@@ -1,29 +1,15 @@
 package clusterConfig
 
 import (
-	"flag"
 	"fmt"
 
-	"github.com/macoli/redis-manager/cmd/paramDeal"
+	"github.com/macoli/redis-manager/pkg/param"
 
 	r "github.com/macoli/redis-manager/pkg/redis"
 )
 
-// param 获取参数
-func param() (string, string, string, string, string) {
-	clusterConfig := flag.NewFlagSet("clusterconfig", flag.ExitOnError)
-	addr := clusterConfig.String("addr", "127.0.0.1:6379", "redis地址")
-	password := clusterConfig.String("password", "", "redis集群密码")
-	opType := clusterConfig.String("type", "get", "操作的类型,可选项:set/get")
-	config := clusterConfig.String("config", "", "操作的配置项")
-	setValue := clusterConfig.String("value", "", "设置集群配置项时,配置项的值.仅当吵着类型是set时生效")
-	paramDeal.ParamsCheck(clusterConfig)
-
-	return *addr, *password, *opType, *config, *setValue
-}
-
 func Run() {
-	addr, password, opType, config, setValue := param()
+	addr, password, opType, config, setValue := param.ClusterConfig()
 
 	//获取集群节点
 	data, err := r.FormatClusterNodes(addr, password)

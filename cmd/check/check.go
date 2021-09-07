@@ -1,11 +1,9 @@
 package check
 
 import (
-	"flag"
+	"github.com/macoli/redis-manager/pkg/param"
 
 	"github.com/macoli/redis-manager/pkg/redis"
-
-	"github.com/macoli/redis-manager/cmd/paramDeal"
 )
 
 /*
@@ -45,20 +43,9 @@ import (
 
 */
 
-// param 获取参数
-func param() (string, string, string) {
-	checkConfig := flag.NewFlagSet("check", flag.ExitOnError)
-	addr := checkConfig.String("addr", "127.0.0.1:6379", "redis地址")
-	password := checkConfig.String("password", "", "redis密码")
-	redisType := checkConfig.String("type", "standalone", "redis 类型,可选项:standalone/sentinel/cluster")
-	paramDeal.ParamsCheck(checkConfig)
-
-	return *addr, *password, *redisType
-}
-
 func Run() {
 	//接收参数
-	addr, password, redisType := param()
+	addr, password, redisType := param.Check()
 	switch redisType {
 	case "standalone":
 	case "sentinel":

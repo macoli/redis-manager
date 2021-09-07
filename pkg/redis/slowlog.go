@@ -4,7 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
+
+type SlowLog struct {
+	Instance string
+	Command  string
+	Duration time.Duration
+	Time     string
+}
 
 // FormatSlowLog 获取 redis 慢查询并格式化
 func FormatSlowLog(addr string, password string) ([]SlowLog, error) {

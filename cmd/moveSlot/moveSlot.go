@@ -2,27 +2,14 @@ package moveSlot
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/macoli/redis-manager/cmd/paramDeal"
+	"github.com/macoli/redis-manager/pkg/param"
+
 	"github.com/macoli/redis-manager/pkg/redis"
 )
-
-func Param() (string, string, string, string, int) {
-	moveSlot := flag.NewFlagSet("moveslot", flag.ExitOnError)
-	sourceAddr := moveSlot.String("saddr", "127.0.0.1:6379", "要迁移slot的源地址")
-	targetAddr := moveSlot.String("taddr", "127.0.0.1:6379", "要迁移slot的目的地址")
-	password := moveSlot.String("pass", "", "redis集群密码,默认为空")
-	slot := moveSlot.String("slot", "", "需要迁移的slot,范围:0-16384,"+
-		"格式:1,100-100,355,2000-2002,默认迁移源 redis 的所有 slot")
-	count := moveSlot.Int("count", 1000, "每次迁移key的数量")
-	paramDeal.ParamsCheck(moveSlot)
-
-	return *sourceAddr, *targetAddr, *password, *slot, *count
-}
 
 // formatSlotStr 校验获取到的 slotStr,并格式化
 func formatSlotStr(slotStr string) (slots []int64, err error) {
@@ -66,7 +53,7 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 
 // Run 迁移指定 slot 到指定节点的执行函数
 func Run() {
-	sourceAddr, targetAddr, password, slotStr, count := Param()
+	sourceAddr, targetAddr, password, slotStr, count := param.MoveSlot()
 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
 	data, err := redis.FormatClusterNodes(sourceAddr, password)

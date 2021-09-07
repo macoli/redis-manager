@@ -7,7 +7,7 @@ import (
 	"github.com/macoli/redis-manager/cmd/check"
 
 	"github.com/macoli/redis-manager/cmd/clusterConfig"
-	"github.com/macoli/redis-manager/cmd/clusterDataClear"
+	"github.com/macoli/redis-manager/cmd/clusterFlush"
 	"github.com/macoli/redis-manager/cmd/moveSlot"
 	"github.com/macoli/redis-manager/cmd/showClusterMap"
 	"github.com/macoli/redis-manager/cmd/showSlowLog"
@@ -37,7 +37,7 @@ func main() {
 	case "moveslot":
 		moveSlot.Run()
 	case "clusterclear":
-		clusterDataClear.Run()
+		clusterFlush.Run()
 	case "clusterconfig":
 		clusterConfig.Run()
 	case "check":
