@@ -1,11 +1,5 @@
 package check
 
-import (
-	"github.com/macoli/redis-manager/pkg/param"
-
-	"github.com/macoli/redis-manager/pkg/redis"
-)
-
 /*
 分析 redis
 数据搜集:
@@ -45,12 +39,12 @@ import (
 
 func Run() {
 	//接收参数
-	addr, password, redisType := param.Check()
-	switch redisType {
-	case "standalone":
-	case "sentinel":
-	case "cluster":
-		redis.CheckClusterState(addr, password)
-	}
+	//addr, password, redisType := param.Check()
+	//switch redisType {
+	//case "standalone":
+	//case "sentinel":
+	//case "cluster":
+	//
+	//}
 
 }

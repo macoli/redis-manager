@@ -1,4 +1,4 @@
-package showSlowLog
+package slowlog
 
 import (
 	"fmt"
@@ -62,15 +62,17 @@ func Run() {
 	var slowLogs []redis.SlowLog
 	switch {
 	case redisType == "standalone": // 单实例 redis 类型
-		ret, err := redis.FormatSlowLog(addr, password)
+		ret, err := redis.SlowLogFormat(addr, password)
 		if err != nil {
 			fmt.Printf("获取慢查询失败, err:%v\n", err)
 			return
 		}
 		slowLogs = append(slowLogs, ret...)
 	case redisType == "cluster": // 集群 redis 类型
+		// 判断是否是集群模式
+
 		// 获取集群所有节点信息
-		data, err := redis.FormatClusterNodes(addr, password)
+		data, err := redis.ClusterInfoFormat(addr, password)
 		if err != nil {
 			fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 			return
@@ -78,7 +80,7 @@ func Run() {
 		clusterNodes := append(data.Masters, data.Slaves...) // 集群所有实例
 		// 循环获取集群所有节点的慢查询日志
 		for _, instance := range clusterNodes {
-			ret, err := redis.FormatSlowLog(instance, password)
+			ret, err := redis.SlowLogFormat(instance, password)
 			if err != nil {
 				fmt.Printf("获取集群节点 %s 的慢查询日志失败, err:%v\n", instance, err)
 				return

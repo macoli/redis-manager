@@ -1,49 +1,39 @@
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/macoli/redis-manager/pkg/param"
 
 	"github.com/macoli/redis-manager/cmd/check"
 
-	"github.com/macoli/redis-manager/cmd/clusterConfig"
-	"github.com/macoli/redis-manager/cmd/clusterFlush"
-	"github.com/macoli/redis-manager/cmd/moveSlot"
-	"github.com/macoli/redis-manager/cmd/showClusterMap"
-	"github.com/macoli/redis-manager/cmd/showSlowLog"
+	"github.com/macoli/redis-manager/cmd/clsuterconfig"
+	"github.com/macoli/redis-manager/cmd/clusterflush"
+	"github.com/macoli/redis-manager/cmd/clustermap"
+	"github.com/macoli/redis-manager/cmd/moveslot"
+	"github.com/macoli/redis-manager/cmd/slowlog"
 )
 
-func Usage() {
-	fmt.Fprintf(os.Stdout, `Usage of redis-manager:
-Options:
-	slowlog         慢查询信息展示
-	moveslot        集群迁移指定的slot到指定节点
-	clustermap      集群映射关系展示
-	clusterclear    集群数据清空
-	clusterconfig   集群配置相关:获取配置项,批量修改配置项
-	check           redis 状态检查
-`)
-}
 func main() {
 	if len(os.Args) < 2 {
-		Usage()
+		param.Usage()
 		os.Exit(0)
 	}
 	switch os.Args[1] {
 	case "slowlog":
-		showSlowLog.Run()
+		slowlog.Run()
 	case "clustermap":
-		showClusterMap.Run()
+		clustermap.Run()
 	case "moveslot":
-		moveSlot.Run()
-	case "clusterclear":
-		clusterFlush.Run()
+		moveslot.Run()
+	case "clusterflush":
+		clusterflush.Run()
 	case "clusterconfig":
-		clusterConfig.Run()
+		clsuterconfig.Run()
 	case "check":
 		check.Run()
 	default:
-		Usage()
+		param.Usage()
 		os.Exit(0)
 	}
 }

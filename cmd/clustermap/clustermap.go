@@ -1,4 +1,4 @@
-package showClusterMap
+package clustermap
 
 import (
 	"fmt"
@@ -48,6 +48,7 @@ func show(data []*redis.MasterSlaveMap, sortBy string) {
 			rowMap.MasterAddr,
 			rowMap.SlaveAddr,
 			rowMap.SlaveID,
+			rowMap.SlotStr,
 		}
 		dataInterface[i] = row
 	}
@@ -60,10 +61,13 @@ func show(data []*redis.MasterSlaveMap, sortBy string) {
 func Run() {
 	addr, password, sortBy := param.ClusterMap()
 
-	data, err := redis.FormatClusterNodes(addr, password)
+	data, err := redis.ClusterInfoFormat(addr, password)
 	if err != nil {
 		fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 		return
+	}
+	for _, d := range data.MasterSlaveMaps {
+		fmt.Printf("%#v\n", *d)
 	}
 	show(data.MasterSlaveMaps, sortBy)
 }

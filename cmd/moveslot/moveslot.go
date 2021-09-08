@@ -1,4 +1,4 @@
-package moveSlot
+package moveslot
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 	// 如果 slotStr 是数字,说明此次只迁移一个 slot
 	slot, er := strconv.ParseInt(slotStr, 10, 64)
 	if er == nil {
-		redis.CheckSlotParam(slot) // 校验 slot 是否在 0-16384
+		redis.SlotCheck(slot) // 校验 slot 是否在 0-16384
 		slots = append(slots, slot)
 		return
 	}
@@ -30,14 +30,14 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 				return nil, errors.New(errMsg)
 			}
 			for i := start; i <= end; i++ {
-				redis.CheckSlotParam(i)
+				redis.SlotCheck(i)
 				slots = append(slots, i)
 			}
 
 		} else {
 			slot, err := strconv.ParseInt(item, 10, 64)
 			if err == nil { // 格式化类型: "1111"
-				redis.CheckSlotParam(slot) // 校验 slot 是否在 0-16384
+				redis.SlotCheck(slot) // 校验 slot 是否在 0-16384
 				slots = append(slots, slot)
 				return slots, nil
 			} else { // 非法字符
@@ -56,7 +56,7 @@ func Run() {
 	sourceAddr, targetAddr, password, slotStr, count := param.MoveSlot()
 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
-	data, err := redis.FormatClusterNodes(sourceAddr, password)
+	data, err := redis.ClusterInfoFormat(sourceAddr, password)
 	if err != nil {
 		fmt.Printf("获取集群所有master节点信息失败, err:%v\n", err)
 		return
@@ -68,7 +68,7 @@ func Run() {
 
 	var slots []int64
 	if slotStr == "" { // 如果 slotStr 为空,获取 sourceAddr 上所有的 slot
-		slots, err = redis.GetClusterAddrSlots(data, sourceAddr)
+		slots, err = redis.SlotsGetByInstance(data, sourceAddr)
 		if err != nil {
 			fmt.Printf("获取源节点 %s 的 slots 信息失败, err:%v\n", sourceAddr, err)
 		}
@@ -79,8 +79,24 @@ func Run() {
 		}
 	}
 
-	err = redis.MoveSlot(sourceAddr, targetAddr, password, slots, count, data)
+	// 建立到 sourceAddr 的连接
+	sourceClient, err := redis.InitStandConn(sourceAddr, password)
 	if err != nil {
-		fmt.Printf("迁移 slot 失败, err:%v\n", err)
+		fmt.Println(err)
+		return
 	}
+
+	// 建立到 targetAddr 的连接
+	targetClient, err := redis.InitStandConn(targetAddr, password)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// 函数结束后关闭 redis 连接
+	defer sourceClient.Close()
+	defer targetClient.Close()
+
+	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, data)
+
 }

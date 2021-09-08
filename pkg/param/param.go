@@ -6,6 +6,20 @@ import (
 	"os"
 )
 
+// Usage 帮助信息
+func Usage() {
+	fmt.Fprintf(os.Stdout, `Usage of redis-manager:
+Comomand: redis-manager Command [Options]
+Command:
+	check           redis状态检查
+	slowlog         慢查询信息展示
+	moveslot        集群迁移指定的slot到指定节点
+	clustermap      集群映射关系展示
+	clusterflush    集群数据清空
+	clusterconfig   集群配置相关:获取配置项,批量修改配置项
+`)
+}
+
 // paramsCheck 校验接收到的参数
 func paramsCheck(p *flag.FlagSet) {
 	params := os.Args[2:]
@@ -74,8 +88,8 @@ func ClusterConfig() (string, string, string, string, string) {
 	addr := clusterConfig.String("a", "127.0.0.1:6379", "address, redis地址")
 	password := clusterConfig.String("p", "", "password, redis集群密码")
 	opType := clusterConfig.String("t", "get", "type, 操作的类型,可选项:set/get")
-	config := clusterConfig.String("ck", "", "config key, 配置项的 key")
-	setValue := clusterConfig.String("cv", "", "config value, 设置集群配置项时,配置项的值.仅当吵着类型是set时生效")
+	config := clusterConfig.String("i", "", "item, 配置项")
+	setValue := clusterConfig.String("v", "", "item value, 设置集群配置项时,配置项的值.仅当操作类型是set时生效")
 	paramsCheck(clusterConfig)
 
 	return *addr, *password, *opType, *config, *setValue
