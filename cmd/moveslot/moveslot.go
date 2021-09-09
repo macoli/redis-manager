@@ -53,7 +53,7 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 
 // Run 迁移指定 slot 到指定节点的执行函数
 func Run() {
-	sourceAddr, targetAddr, password, slotStr, count := param.MoveSlot()
+	sourceAddr, targetAddr, password, slotStr, count, moveWorker := param.MoveSlot()
 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
 	data, err := redis.ClusterInfoFormat(sourceAddr, password)
@@ -97,6 +97,6 @@ func Run() {
 	defer sourceClient.Close()
 	defer targetClient.Close()
 
-	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, data)
+	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, moveWorker, data)
 
 }

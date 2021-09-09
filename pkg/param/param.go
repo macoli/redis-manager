@@ -57,7 +57,7 @@ func ClusterMap() (string, string, string) {
 }
 
 // MoveSlot 参数获取
-func MoveSlot() (string, string, string, string, int) {
+func MoveSlot() (string, string, string, string, int, int) {
 	moveSlot := flag.NewFlagSet("moveslot", flag.ExitOnError)
 	sourceAddr := moveSlot.String("from", "127.0.0.1:6379", "要迁移slot的源地址")
 	targetAddr := moveSlot.String("to", "127.0.0.1:6379", "要迁移slot的目的地址")
@@ -65,21 +65,23 @@ func MoveSlot() (string, string, string, string, int) {
 	slot := moveSlot.String("slots", "", "需要迁移的slot,范围:0-16384,"+
 		"格式:1,100-100,355,2000-2002,默认迁移源 redis 的所有 slot")
 	count := moveSlot.Int("count", 1000, "每次迁移key的数量")
+	moveWorker := moveSlot.Int("n", 1, "move slot work nums, 同时迁移 slot 的并发数")
 	paramsCheck(moveSlot)
 
-	return *sourceAddr, *targetAddr, *password, *slot, *count
+	return *sourceAddr, *targetAddr, *password, *slot, *count, *moveWorker
 }
 
 // ClusterFlush 获取参数
-func ClusterFlush() (string, string, string) {
+func ClusterFlush() (string, string, string, int) {
 	clusterDataClear := flag.NewFlagSet("clusterflush", flag.ExitOnError)
 	addr := clusterDataClear.String("a", "127.0.0.1:6379", "address, redis地址")
 	password := clusterDataClear.String("p", "", "password, redis密码")
 	flushCMD := clusterDataClear.String("c", "FLUSHALL",
 		"flush command, 清空redis命令,当清空命令被重命名后使用")
+	flushWorker := clusterDataClear.Int("n", 1, "flush worker nums, 同时执行清理的并发数")
 	paramsCheck(clusterDataClear)
 
-	return *addr, *password, *flushCMD
+	return *addr, *password, *flushCMD, *flushWorker
 }
 
 // ClusterConfig 获取参数

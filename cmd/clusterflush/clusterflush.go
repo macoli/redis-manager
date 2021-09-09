@@ -9,7 +9,7 @@ import (
 )
 
 func Run() {
-	addr, password, flushCMD := param.ClusterFlush()
+	addr, password, flushCMD, flushWorker := param.ClusterFlush()
 
 	// 获取集群信息
 	data, err := redis.ClusterInfoFormat(addr, password)
@@ -19,5 +19,5 @@ func Run() {
 	}
 
 	// 清空集群所有节点
-	redis.ClusterFlush(data, password, flushCMD)
+	redis.ClusterFlush(data, password, flushCMD, flushWorker)
 }

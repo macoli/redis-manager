@@ -7,10 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/go-redis/redis/v8"
 )
 
 // SlotCheck 校验 slot 是否合法范围中: 0-16384
@@ -62,71 +59,9 @@ func SlotsGetByInstance(data *ClusterInfo, addr string) (slots []int64, err erro
 	return
 }
 
-// move 迁移单个 slot
-func move(sourceClient, targetClient *redis.Client, sourceAddr, targetAddr, password string,
-	slot int64, count int, data *ClusterInfo) {
-
-	defer redisWG.Done()
-	// 打印帮助信息
-	fmt.Printf("Slot %d 开始迁移\n", slot)
-
-	// 对目标节点importing 命令: cluster setslot [slot] importing [source nodeID]
-	_, err := targetClient.Do(context.Background(), "cluster", "setslot", slot, "importing", data.AddrToID[sourceAddr]).Result()
-	if err != nil {
-		fmt.Printf("在目标节点执行命令:set slot importing 失败: %v\n", err)
-		return
-	}
-
-	// 对源节点 migration 命令: cluster setslot [slot] migrating [target nodeID]
-	_, err = sourceClient.Do(context.Background(), "cluster", "setslot", slot, "migrating", data.AddrToID[targetAddr]).Result()
-	if err != nil {
-		fmt.Printf("在源节点执行命令:set slot migration 失败: %v\n", err)
-		return
-	}
-
-	// 迁移 slot 中的数据
-	//获取目标节点的 ip 和 port
-	targetIP := strings.Split(targetAddr, ":")[0]
-	targetPort := strings.Split(targetAddr, ":")[1]
-	//循环迁移 slot 的数据到目标节点
-	for {
-		ret := sourceClient.ClusterGetKeysInSlot(context.Background(), int(slot), count) // 从源节点获取 slot 的 key(批量)
-		// 循环将获取的 key 发往目标 redis 实例
-		for _, key := range ret.Val() {
-			_, err := sourceClient.Migrate(context.Background(), targetIP, targetPort, key, 0, time.Second*10).Result()
-			if err != nil {
-				fmt.Printf("迁移slot: %d 中的数据失败: %v\n", slot, err)
-				return
-			}
-			fmt.Printf(".") // 打印迁移 key 进度
-		}
-		if len(ret.Val()) < count {
-			//fmt.Printf("\n")
-			break
-		}
-	}
-
-	// 通告集群slot 已经分配给了目标节点,向集群内所有主节点发送命令: cluster setslot [slot] node [target nodeID]
-	for _, addr := range data.Masters {
-		rc, err := InitStandConn(addr, password)
-		if err != nil {
-			fmt.Printf("连接 redis: %s 失败: %v\n", addr, err)
-			return
-		}
-
-		_, err = rc.Do(context.Background(), "cluster", "setslot", slot, "node", data.AddrToID[targetAddr]).Result()
-		if err != nil {
-			fmt.Printf("在 redis: %s 上执行命令: cluster setslot 失败, err:%v\n", addr, err)
-			return
-		}
-		rc.Close()
-	}
-
-	//fmt.Printf("Slot %d 完成迁移\n", slot)
-	fmt.Printf("Slot %d Done\n", slot)
-}
-
+// ==================================move slot=================================================================
 /*
+迁移流程:
 1.指定 slot,slot所在源节点,slot 要迁移的目的节点
 2.对目标节点发送 cluster setslot [slot] importing [source nodeID]
 3.对源节点发送 cluster setslot [slot] migrating [target nodeID]
@@ -137,8 +72,24 @@ func move(sourceClient, targetClient *redis.Client, sourceAddr, targetAddr, pass
 */
 
 // SlotMove 迁移 slot
-func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count int, data *ClusterInfo) {
-	redisWG = &sync.WaitGroup{}
+func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, moveWorker int, data *ClusterInfo) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var moveChannel chan int64
+	if moveWorker == 0 {
+		moveChannel = make(chan int64, 1)
+	} else {
+		moveChannel = make(chan int64, moveWorker)
+	}
+
+	// 对集群所有 master 节点 全部建立连接
+	rcList, err := InitStandConnList(data.Masters, password)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	// 建立到 sourceAddr 的连接
 	sourceClient, err := InitStandConn(sourceAddr, password)
 	if err != nil {
@@ -156,15 +107,91 @@ func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count int,
 	// 函数结束后关闭 redis 连接
 	defer sourceClient.Close()
 	defer targetClient.Close()
+	defer func() {
+		for _, rc := range rcList {
+			rc.Close()
+		}
+	}()
 
 	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, data.AddrToID[sourceAddr])
 	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, data.AddrToID[targetAddr])
 
-	// 迁移 slot
-	for _, slot := range slots {
-		redisWG.Add(1)
-		go move(sourceClient, targetClient, sourceAddr, targetAddr, password, slot, count, data)
+	// 启动 moveWorker 个并发迁移 slot
+	for i := 0; i < moveWorker; i++ {
+		go func() {
+		Loop:
+			for {
+				select {
+				case <-ctx.Done():
+					break
+				case slot := <-moveChannel:
+					//defer redisWG.Done()
+					// 打印帮助信息
+					fmt.Printf("Slot %d 开始迁移\n", slot)
 
+					// 对目标节点importing 命令: cluster setslot [slot] importing [source nodeID]
+					_, err := targetClient.Do(context.Background(), "cluster", "setslot", slot, "importing", data.AddrToID[sourceAddr]).Result()
+					if err != nil {
+						fmt.Printf("在目标节点执行命令:set slot importing 失败: %v\n", err)
+						continue
+					}
+
+					// 对源节点 migration 命令: cluster setslot [slot] migrating [target nodeID]
+					_, err = sourceClient.Do(context.Background(), "cluster", "setslot", slot, "migrating", data.AddrToID[targetAddr]).Result()
+					if err != nil {
+						fmt.Printf("在源节点执行命令:set slot migration 失败: %v\n", err)
+						continue
+					}
+
+					// 迁移 slot 中的数据
+					//获取目标节点的 ip 和 port
+					targetIP := strings.Split(targetAddr, ":")[0]
+					targetPort := strings.Split(targetAddr, ":")[1]
+					//循环迁移 slot 的数据到目标节点
+					for {
+						ret := sourceClient.ClusterGetKeysInSlot(context.Background(), int(slot), count) // 从源节点获取 slot 的 key(批量)
+						// 循环将获取的 key 发往目标 redis 实例
+						for _, key := range ret.Val() {
+							_, err := sourceClient.Migrate(context.Background(), targetIP, targetPort, key, 0, time.Second*10).Result()
+							if err != nil {
+								fmt.Printf("迁移slot: %d 中的数据失败: %v\n", slot, err)
+								continue Loop
+							}
+							fmt.Printf(".") // 打印迁移 key 进度
+						}
+						if len(ret.Val()) < count {
+							//fmt.Printf("\n")
+							break
+						}
+					}
+
+					// 通告集群slot 已经分配给了目标节点,向集群内所有主节点发送命令: cluster setslot [slot] node [target nodeID]
+					for _, rc := range rcList {
+						_, err = rc.Do(context.Background(), "cluster", "setslot", slot, "node", data.AddrToID[targetAddr]).Result()
+						if err != nil {
+							fmt.Printf("执行命令: cluster setslot %d 失败, err:%v\n", slot, err)
+							continue Loop
+						}
+					}
+					//fmt.Printf("Slot %d 完成迁移\n", slot)
+					fmt.Printf("Slot %d Done\n", slot)
+				}
+			}
+
+		}()
 	}
-	redisWG.Wait()
+
+	// moveChannel 中发送 slot
+	for _, slot := range slots {
+		moveChannel <- slot
+	}
+
+	// slot 发送完成后,循环检测 moveChannel 的剩余长度,当长度为 0 时,表示要迁移的 slot 都已经处理完毕
+	for {
+		if len(moveChannel) == 0 {
+			break
+		}
+		time.Sleep(time.Second * 1)
+	}
+
 }
