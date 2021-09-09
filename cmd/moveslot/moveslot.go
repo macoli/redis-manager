@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/macoli/redis-manager/pkg/param"
 
@@ -97,6 +98,11 @@ func Run() {
 	defer sourceClient.Close()
 	defer targetClient.Close()
 
+	fmt.Printf("========== Move Slots From  %s To %s ==========\n", sourceAddr, targetAddr)
+	fmt.Printf("Start Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+
 	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, moveWorker, data)
+
+	fmt.Printf("End Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
 
 }

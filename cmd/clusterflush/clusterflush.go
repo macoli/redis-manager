@@ -2,6 +2,7 @@ package clusterflush
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/macoli/redis-manager/pkg/param"
 
@@ -18,6 +19,11 @@ func Run() {
 		return
 	}
 
+	fmt.Printf("========== Cluster Data FLUSH ==========\n")
+	fmt.Printf("Start Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+
 	// 清空集群所有节点
 	redis.ClusterFlush(data, password, flushCMD, flushWorker)
+
+	fmt.Printf("End Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
 }

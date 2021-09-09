@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -15,11 +14,10 @@ var redisWG *sync.WaitGroup
 // InitStandConn 初始化单例 redis 连接
 func InitStandConn(addr, password string) (*redis.Client, error) {
 	rc := redis.NewClient(&redis.Options{
-		Addr:        addr,
-		Password:    password,
-		DB:          0,
-		PoolSize:    100,
-		DialTimeout: time.Minute * 30,
+		Addr:     addr,
+		Password: password,
+		DB:       0,
+		PoolSize: 100,
 	})
 
 	_, err := rc.Ping(context.Background()).Result()
@@ -35,11 +33,10 @@ func InitStandConnList(addrSlice []string, password string) ([]*redis.Client, er
 	var rcSlice []*redis.Client
 	for _, addr := range addrSlice {
 		rc := redis.NewClient(&redis.Options{
-			Addr:        addr,
-			Password:    password,
-			DB:          0,
-			PoolSize:    100,
-			DialTimeout: time.Minute * 30,
+			Addr:     addr,
+			Password: password,
+			DB:       0,
+			PoolSize: 100,
 		})
 
 		_, err := rc.Ping(context.Background()).Result()
@@ -58,8 +55,7 @@ func InitSentinelMasterConn(addrSlice []string, password, masterName string) (*r
 		MasterName:    masterName,
 		SentinelAddrs: addrSlice,
 		Password:      password,
-		PoolSize:      1000,
-		DialTimeout:   time.Minute * 30,
+		PoolSize:      100,
 	})
 
 	_, err := rc.Ping(context.Background()).Result()
@@ -76,8 +72,7 @@ func InitSentinelSlaveConn(addrSlice []string, password, masterName string) (*re
 		MasterName:    masterName,
 		SentinelAddrs: addrSlice,
 		Password:      password,
-		PoolSize:      1000,
-		DialTimeout:   time.Minute * 30,
+		PoolSize:      100,
 	})
 
 	_, err := rc.Ping(context.Background()).Result()
@@ -109,7 +104,7 @@ func InitClusterConn(addrSlice []string, password string) (*redis.ClusterClient,
 	rc := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs:    addrSlice,
 		Password: password,
-		PoolSize: 1000,
+		PoolSize: 100,
 	})
 
 	_, err := rc.Ping(context.Background()).Result()

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,15 +73,14 @@ func SlotsGetByInstance(data *ClusterInfo, addr string) (slots []int64, err erro
 */
 
 // SlotMove 迁移 slot
-func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, moveWorker int, data *ClusterInfo) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var moveChannel chan int64
-	if moveWorker == 0 {
-		moveChannel = make(chan int64, 1)
+func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, workerNums int, data *ClusterInfo) {
+	var wg sync.WaitGroup
+	// 设置最大并发数量
+	var workerChannel chan struct{}
+	if workerNums == 0 {
+		workerChannel = make(chan struct{}, 1)
 	} else {
-		moveChannel = make(chan int64, moveWorker)
+		workerChannel = make(chan struct{}, workerNums)
 	}
 
 	// 对集群所有 master 节点 全部建立连接
@@ -113,85 +113,74 @@ func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, mov
 		}
 	}()
 
-	fmt.Printf("FROM sourceAddr: %s sourceNodeID: %s\n", sourceAddr, data.AddrToID[sourceAddr])
-	fmt.Printf("TO targetAddr: %s targetNodeID: %s\n", targetAddr, data.AddrToID[targetAddr])
+	// 并发迁移 slot
+	for _, SLOT := range slots {
+		wg.Add(1)
+		go func(slot int64) {
+			defer wg.Done()
+			workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
+			// 执行完毕,释放信号
+			defer func() {
+				<-workerChannel
+			}()
 
-	// 启动 moveWorker 个并发迁移 slot
-	for i := 0; i < moveWorker; i++ {
-		go func() {
-		Loop:
+			// 打印帮助信息
+			fmt.Printf("Slot %d 开始迁移\n", slot)
+
+			// 对目标节点importing 命令: cluster setslot [slot] importing [source nodeID]
+			_, err := targetClient.Do(context.Background(), "cluster", "setslot", slot, "importing", data.AddrToID[sourceAddr]).Result()
+			if err != nil {
+				fmt.Printf("在目标节点执行命令:set slot importing 失败: %v\n", err)
+				return
+			}
+
+			// 对源节点 migration 命令: cluster setslot [slot] migrating [target nodeID]
+			_, err = sourceClient.Do(context.Background(), "cluster", "setslot", slot, "migrating", data.AddrToID[targetAddr]).Result()
+			if err != nil {
+				fmt.Printf("在源节点执行命令:set slot migration 失败: %v\n", err)
+				return
+			}
+
+			// 迁移 slot 中的数据
+			//获取目标节点的 ip 和 port
+			targetIP := strings.Split(targetAddr, ":")[0]
+			targetPort := strings.Split(targetAddr, ":")[1]
+			//循环迁移 slot 的数据到目标节点
 			for {
-				select {
-				case <-ctx.Done():
+				ret := sourceClient.ClusterGetKeysInSlot(context.Background(), int(slot), count) // 从源节点获取 slot 的 key(批量)
+				// 循环将获取的 key 发往目标 redis 实例
+				for _, key := range ret.Val() {
+					_, err := sourceClient.Migrate(context.Background(), targetIP, targetPort, key, 0, time.Second*10).Result()
+					if err != nil {
+						fmt.Printf("迁移slot: %d 中的数据失败: %v\n", slot, err)
+						return
+					}
+					if cap(workerChannel) == 1 {
+						fmt.Printf(".") // 打印迁移 key 进度
+					}
+
+				}
+				if len(ret.Val()) < count {
+					//fmt.Printf("\n")
 					break
-				case slot := <-moveChannel:
-					//defer redisWG.Done()
-					// 打印帮助信息
-					fmt.Printf("Slot %d 开始迁移\n", slot)
-
-					// 对目标节点importing 命令: cluster setslot [slot] importing [source nodeID]
-					_, err := targetClient.Do(context.Background(), "cluster", "setslot", slot, "importing", data.AddrToID[sourceAddr]).Result()
-					if err != nil {
-						fmt.Printf("在目标节点执行命令:set slot importing 失败: %v\n", err)
-						continue
-					}
-
-					// 对源节点 migration 命令: cluster setslot [slot] migrating [target nodeID]
-					_, err = sourceClient.Do(context.Background(), "cluster", "setslot", slot, "migrating", data.AddrToID[targetAddr]).Result()
-					if err != nil {
-						fmt.Printf("在源节点执行命令:set slot migration 失败: %v\n", err)
-						continue
-					}
-
-					// 迁移 slot 中的数据
-					//获取目标节点的 ip 和 port
-					targetIP := strings.Split(targetAddr, ":")[0]
-					targetPort := strings.Split(targetAddr, ":")[1]
-					//循环迁移 slot 的数据到目标节点
-					for {
-						ret := sourceClient.ClusterGetKeysInSlot(context.Background(), int(slot), count) // 从源节点获取 slot 的 key(批量)
-						// 循环将获取的 key 发往目标 redis 实例
-						for _, key := range ret.Val() {
-							_, err := sourceClient.Migrate(context.Background(), targetIP, targetPort, key, 0, time.Second*10).Result()
-							if err != nil {
-								fmt.Printf("迁移slot: %d 中的数据失败: %v\n", slot, err)
-								continue Loop
-							}
-							fmt.Printf(".") // 打印迁移 key 进度
-						}
-						if len(ret.Val()) < count {
-							//fmt.Printf("\n")
-							break
-						}
-					}
-
-					// 通告集群slot 已经分配给了目标节点,向集群内所有主节点发送命令: cluster setslot [slot] node [target nodeID]
-					for _, rc := range rcList {
-						_, err = rc.Do(context.Background(), "cluster", "setslot", slot, "node", data.AddrToID[targetAddr]).Result()
-						if err != nil {
-							fmt.Printf("执行命令: cluster setslot %d 失败, err:%v\n", slot, err)
-							continue Loop
-						}
-					}
-					//fmt.Printf("Slot %d 完成迁移\n", slot)
-					fmt.Printf("Slot %d Done\n", slot)
 				}
 			}
 
-		}()
-	}
+			// 通告集群slot 已经分配给了目标节点,向集群内所有主节点发送命令: cluster setslot [slot] node [target nodeID]
+			for _, rc := range rcList {
+				_, err = rc.Do(context.Background(), "cluster", "setslot", slot, "node", data.AddrToID[targetAddr]).Result()
+				if err != nil {
+					fmt.Printf("执行命令: cluster setslot %d 失败, err:%v\n", slot, err)
+					return
+				}
+			}
+			if cap(workerChannel) == 1 {
+				fmt.Println("Done")
+			} else {
+				fmt.Printf("Slot %d Done\n", slot)
+			}
 
-	// moveChannel 中发送 slot
-	for _, slot := range slots {
-		moveChannel <- slot
+		}(SLOT)
 	}
-
-	// slot 发送完成后,循环检测 moveChannel 的剩余长度,当长度为 0 时,表示要迁移的 slot 都已经处理完毕
-	for {
-		if len(moveChannel) == 0 {
-			break
-		}
-		time.Sleep(time.Second * 1)
-	}
-
+	wg.Wait()
 }

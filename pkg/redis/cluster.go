@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 
 	"github.com/macoli/redis-manager/pkg/slice"
 )
@@ -261,30 +264,28 @@ func ClusterConfigSet(addrSlice []string, password, configKey, setValue string) 
 			return err
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err = rc.ConfigSet(ctx, configKey, setValue).Err()
+		err = rc.ConfigSet(context.Background(), configKey, setValue).Err()
 		if err != nil {
 			errMsg := fmt.Sprintf("集群节点设置 %s 的值: %s 失败\n", configKey, setValue)
 			return errors.New(errMsg)
 		}
 
-		cancel()
 		rc.Close()
 	}
 	return
 }
 
 // ==================================cluster flush==================================================
-// ClusterFlush 清空整个集群所有节点的数据
-func ClusterFlush(data *ClusterInfo, password, flushCMD string, flushWorker int) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	var flushAddrChannel chan string
-	if flushWorker == 0 {
-		flushAddrChannel = make(chan string, 1)
+// ClusterFlush 清空整个集群所有节点的数据
+func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) {
+	var wg sync.WaitGroup
+	// 设置最大并发数量
+	var workerChannel chan struct{}
+	if workerNums == 0 {
+		workerChannel = make(chan struct{}, 1)
 	} else {
-		flushAddrChannel = make(chan string, flushWorker)
+		workerChannel = make(chan struct{}, workerNums)
 	}
 
 	clusterNodes := append(data.Masters, data.Slaves...)
@@ -304,72 +305,75 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, flushWorker int)
 
 	if versionPrefix == 3 { // redis 版本为 3.x
 		// 获取cluster-node-timeout配置值(保存,后续恢复时使用)
+		fmt.Printf("集群当前 redis 版本为: %s, 需要调大配置项 cluster-node-timeout 的值,避免清理过程中发生主从切换\n", version)
+
 		ret, err := ClusterConfigGet(clusterNodes, password, "cluster-node-timeout")
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+		fmt.Printf("集群配置项 cluster-node-timeout 的值当前为: %s (μs), 准备调大到 1800,000 (μs, 30min)\n", ret)
 
 		// 调整将cluster-node-timeout配置项的值为 30 分钟,避免清空 redis 的时候发生主从切换
-		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", "1800")
+		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", "1800000")
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+		fmt.Printf("集群配置项 cluster-node-timeout 的值已调整为 1800000 (μs) \n")
 
-		// 同时启动 flushWorker 个并发清理redis
-		for i := 0; i < flushWorker; i++ {
-			go func() {
-			Loop:
-				for {
-					select {
-					case <-ctx.Done():
-						break
-					case addr := <-flushAddrChannel:
-						// 连接 redis
-						rc, err := InitStandConn(addr, password)
-						if err != nil {
-							fmt.Println(err)
-						}
-
-						fmt.Printf("开始清空 %s 数据\n", addr)
-						switch flushCMD {
-						case "FLUSHALL":
-							err = rc.Do(context.Background(), "FLUSHALL").Err()
-							if err != nil {
-								fmt.Printf("***** %s 执行 FLUSHALL 命令失败: %v\n", addr, err)
-								rc.Close()
-								continue Loop
-							}
-						default:
-							err = rc.Do(context.Background(), flushCMD).Err()
-							if err != nil {
-								fmt.Printf("***** %s 执行 FLUSHALL 的 rename 命令 %s 失败: %v\n", addr, flushCMD, err)
-								rc.Close()
-								continue Loop
-							}
-
-						}
-						fmt.Printf("!!! %s 数据已清空\n", addr)
-						rc.Close()
-					}
-				}
-			}()
-		}
-
-		// 将 redis 信息发送到 flushAddrChannel(channel 满了会阻塞)
+		// 并发清空 redis 操作
 		for _, addr := range data.Masters {
-			flushAddrChannel <- addr
-		}
+			wg.Add(1)
+			go func(address string) {
+				defer wg.Done()
 
-		// 当所有数据都发送完后,循环检测 channel 剩余长度, 长度为 0 表示所有数据都处理完成
-		for {
-			if len(flushAddrChannel) == 0 {
-				break
-			}
-			time.Sleep(time.Second * 1)
-		}
+				workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
+				// 执行完毕,释放信号
+				defer func() {
+					<-workerChannel
+				}()
 
+				// =================清空 redis =========================
+				// 连接 redis
+				rc := redis.NewClient(&redis.Options{
+					Addr:        address,
+					Password:    password,
+					DB:          0,
+					PoolSize:    100,
+					DialTimeout: time.Minute * 30,
+					ReadTimeout: time.Minute * 30,
+				})
+
+				_, err := rc.Ping(context.Background()).Result()
+				if err != nil {
+					fmt.Printf("redis 实例 %s 连接失败: %v\n", addr, err)
+					return
+				}
+
+				defer rc.Close()
+
+				fmt.Printf("开始清空 %s 数据\n", addr)
+				switch flushCMD {
+				case "FLUSHALL":
+					err = rc.Do(context.Background(), "FLUSHALL").Err()
+					if err != nil {
+						fmt.Printf("***** %s 执行 FLUSHALL 命令失败: %v\n", addr, err)
+						return
+					}
+				default:
+					err = rc.Do(context.Background(), flushCMD).Err()
+					if err != nil {
+						fmt.Printf("***** %s 执行 FLUSHALL 的 rename 命令 %s 失败: %v\n", addr, flushCMD, err)
+						return
+					}
+
+				}
+				fmt.Printf("!!! %s 数据已清空\n", addr)
+			}(addr)
+		}
+		wg.Wait()
+		fmt.Printf("集群已清理完成, 还原集群配置项 cluster-node-timeout 的值为: %s (μs)\n", ret)
 		// 将cluster-node-timeout配置修改为原来配置的值
 		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", ret)
 		if err != nil {
@@ -378,57 +382,46 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, flushWorker int)
 		}
 
 	} else if versionPrefix >= 4 { // redis 版本为 4.x 版本及以上
-		// 同时启动 flushWorker 个并发清理redis
-		for i := 0; i < flushWorker; i++ {
-			go func() {
-			Loop:
-				for {
-					select {
-					case <-ctx.Done():
-						break
-					case addr := <-flushAddrChannel:
-						// 连接 redis
-						rc, err := InitStandConn(addr, password)
-						if err != nil {
-							fmt.Println(err)
-						}
-
-						fmt.Printf("开始清空 %s 数据\n", addr)
-						switch flushCMD {
-						case "FLUSHALL":
-							err = rc.Do(context.Background(), "FLUSHALL", "ASYNC").Err()
-							if err != nil {
-								fmt.Printf("***** %s 执行 FLUSHALL ASYNC 命令失败: %v\n", addr, err)
-								rc.Close()
-								continue Loop
-							}
-						default:
-							err = rc.Do(context.Background(), flushCMD, "ASYNC").Err()
-							if err != nil {
-								fmt.Printf("***** %s 执行 FLUSHALL 的 rename 命令 %s ASYNC 失败: %v\n", addr, flushCMD, err)
-								rc.Close()
-								continue Loop
-							}
-
-						}
-						fmt.Printf("!!! %s 数据已清空\n", addr)
-						rc.Close()
-					}
-				}
-			}()
-		}
-
-		// 将 redis 信息发送到 flushAddrChannel(channel 满了会阻塞)
+		// 并发清空 redis 操作
 		for _, addr := range data.Masters {
-			flushAddrChannel <- addr
-		}
+			wg.Add(1)
+			go func(address string) {
+				defer wg.Done()
 
-		// 当所有数据都发送完后,循环检测 channel 剩余长度, 长度为 0 表示所有数据都处理完成
-		for {
-			if len(flushAddrChannel) == 0 {
-				break
-			}
-			time.Sleep(time.Second * 1)
+				workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
+				// 执行完毕,释放信号
+				defer func() {
+					<-workerChannel
+				}()
+
+				// =================清空 redis =========================
+				// 连接 redis
+				rc, err := InitStandConn(address, password)
+				if err != nil {
+					fmt.Println(err)
+				}
+				defer rc.Close()
+
+				fmt.Printf("开始清空 %s 数据\n", addr)
+				switch flushCMD {
+				case "FLUSHALL":
+					err = rc.Do(context.Background(), "FLUSHALL", "ASYNC").Err()
+					if err != nil {
+						fmt.Printf("***** %s 执行 FLUSHALL ASYNC 命令失败: %v\n", addr, err)
+						return
+					}
+				default:
+					err = rc.Do(context.Background(), flushCMD, "ASYNC").Err()
+					if err != nil {
+						fmt.Printf("***** %s 执行 FLUSHALL 的 rename 命令 %s ASYNC 失败: %v\n", addr, flushCMD, err)
+						return
+					}
+
+				}
+				fmt.Printf("!!! %s 数据已清空\n", addr)
+			}(addr)
 		}
+		wg.Wait()
 	}
+
 }
