@@ -20,10 +20,14 @@ func Run() {
 	}
 
 	fmt.Printf("========== Cluster Data FLUSH ==========\n")
-	fmt.Printf("Start Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+	startTime := time.Now()
+	fmt.Printf("Start Time: %v\n", startTime.Format("2006-01-02 15:04:05"))
 
 	// 清空集群所有节点
 	redis.ClusterFlush(data, password, flushCMD, flushWorker)
 
-	fmt.Printf("End Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+	endTime := time.Now()
+	fmt.Printf("End Time: %v\n", endTime.Format("2006-01-02 15:04:05"))
+	cost := endTime.Sub(startTime)
+	fmt.Printf("Cost Time: %v\n", cost)
 }

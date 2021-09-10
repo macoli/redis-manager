@@ -312,7 +312,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("集群配置项 cluster-node-timeout 的值当前为: %s (μs), 准备调大到 1800,000 (μs, 30min)\n", ret)
+		fmt.Printf("集群配置项 cluster-node-timeout 的值当前为: %s (ms), 准备调大到 1800000 (ms, 30min)\n", ret)
 
 		// 调整将cluster-node-timeout配置项的值为 30 分钟,避免清空 redis 的时候发生主从切换
 		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", "1800000")
@@ -320,7 +320,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("集群配置项 cluster-node-timeout 的值已调整为 1800000 (μs) \n")
+		fmt.Printf("集群配置项 cluster-node-timeout 的值已调整为 1800000\n")
 
 		// 并发清空 redis 操作
 		for _, addr := range data.Masters {
@@ -373,15 +373,36 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 			}(addr)
 		}
 		wg.Wait()
-		fmt.Printf("集群已清理完成, 还原集群配置项 cluster-node-timeout 的值为: %s (μs)\n", ret)
-		// 将cluster-node-timeout配置修改为原来配置的值
-		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", ret)
-		if err != nil {
-			fmt.Println(err)
-			return
+
+		fmt.Printf("集群已清理完成, 将集群配置项 cluster-node-timeout 的值还原为 %s\n", ret)
+		cnt := 0
+		for {
+			if cnt >= 5 {
+				fmt.Printf("还原集群配置项 cluster-node-timeout 失败,请检查集群状态,并将其手动还原为: %s\n", ret)
+				return
+			}
+			// 将cluster-node-timeout配置修改为原来配置的值
+			err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", ret)
+			if err != nil {
+				cnt += 1
+				interval := time.Second * time.Duration(cnt*10)
+				fmt.Printf("还原失败, %v 后重试第 %d 次\n", interval, cnt)
+				time.Sleep(interval)
+				continue
+			} else {
+				ret1, err := ClusterConfigGet(clusterNodes, password, "cluster-node-timeout")
+				if err != nil {
+					fmt.Printf("还原配置项 cluster-node-timeout 成功,但获取其当前值时失败: %v\n", err)
+					return
+				}
+				fmt.Printf("还原配置项 cluster-node-timeout 成功, 其当前值为:%s\n", ret1)
+				return
+			}
+
 		}
 
 	} else if versionPrefix >= 4 { // redis 版本为 4.x 版本及以上
+		fmt.Printf("集群当前 redis 版本为: %s, 支持异步清空数据,清空命令执行完后会在后台逐步完成清理\n", version)
 		// 并发清空 redis 操作
 		for _, addr := range data.Masters {
 			wg.Add(1)
@@ -402,7 +423,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 				}
 				defer rc.Close()
 
-				fmt.Printf("开始清空 %s 数据\n", addr)
+				fmt.Printf("开始对 %s 异步清空数据\n", addr)
 				switch flushCMD {
 				case "FLUSHALL":
 					err = rc.Do(context.Background(), "FLUSHALL", "ASYNC").Err()
@@ -418,7 +439,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 					}
 
 				}
-				fmt.Printf("!!! %s 数据已清空\n", addr)
+				fmt.Printf("!!! %s 异步清空命令已执行\n", addr)
 			}(addr)
 		}
 		wg.Wait()

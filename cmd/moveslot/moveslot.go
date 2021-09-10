@@ -99,10 +99,14 @@ func Run() {
 	defer targetClient.Close()
 
 	fmt.Printf("========== Move Slots From  %s To %s ==========\n", sourceAddr, targetAddr)
-	fmt.Printf("Start Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+	startTime := time.Now()
+	fmt.Printf("Start Time: %v\n", startTime.Format("2006-01-02 15:04:05"))
 
 	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, moveWorker, data)
 
-	fmt.Printf("End Time: %v\n", time.Now().Format("2006-01-02 15:04:05"))
+	endTime := time.Now()
+	fmt.Printf("End Time: %v\n", endTime.Format("2006-01-02 15:04:05"))
+	cost := endTime.Sub(startTime)
+	fmt.Printf("Cost Time: %v\n", cost)
 
 }
