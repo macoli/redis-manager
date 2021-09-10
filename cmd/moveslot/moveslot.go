@@ -15,10 +15,10 @@ import (
 // formatSlotStr 校验获取到的 slotStr,并格式化
 func formatSlotStr(slotStr string) (slots []int64, err error) {
 	// 如果 slotStr 是数字,说明此次只迁移一个 slot
-	slot, er := strconv.ParseInt(slotStr, 10, 64)
+	slot, er := strconv.Atoi(slotStr)
 	if er == nil {
-		iredis.SlotCheck(slot) // 校验 slot 是否在 0-16384
-		slots = append(slots, slot)
+		iredis.SlotCheck(int64(slot)) // 校验 slot 是否在 0-16384
+		slots = append(slots, int64(slot))
 		return
 	}
 	// 如果 slotStr 是非数字,校验格式是否正确(1,100-100,355,2000-2002),并格式化
@@ -36,11 +36,10 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 			}
 
 		} else {
-			slot, err := strconv.ParseInt(item, 10, 64)
+			slot, err := strconv.Atoi(item)
 			if err == nil { // 格式化类型: "1111"
-				iredis.SlotCheck(slot) // 校验 slot 是否在 0-16384
-				slots = append(slots, slot)
-				return slots, nil
+				iredis.SlotCheck(int64(slot)) // 校验 slot 是否在 0-16384
+				slots = append(slots, int64(slot))
 			} else { // 非法字符
 				fmt.Printf("格式化slotStr: %s 失败\n", item)
 				return nil, err
@@ -48,7 +47,6 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 
 		}
 	}
-
 	return
 }
 
