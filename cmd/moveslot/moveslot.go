@@ -9,7 +9,7 @@ import (
 
 	"github.com/macoli/redis-manager/pkg/param"
 
-	"github.com/macoli/redis-manager/pkg/redis"
+	"github.com/macoli/redis-manager/pkg/iredis"
 )
 
 // formatSlotStr 校验获取到的 slotStr,并格式化
@@ -17,7 +17,7 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 	// 如果 slotStr 是数字,说明此次只迁移一个 slot
 	slot, er := strconv.ParseInt(slotStr, 10, 64)
 	if er == nil {
-		redis.SlotCheck(slot) // 校验 slot 是否在 0-16384
+		iredis.SlotCheck(slot) // 校验 slot 是否在 0-16384
 		slots = append(slots, slot)
 		return
 	}
@@ -31,14 +31,14 @@ func formatSlotStr(slotStr string) (slots []int64, err error) {
 				return nil, errors.New(errMsg)
 			}
 			for i := start; i <= end; i++ {
-				redis.SlotCheck(i)
+				iredis.SlotCheck(i)
 				slots = append(slots, i)
 			}
 
 		} else {
 			slot, err := strconv.ParseInt(item, 10, 64)
 			if err == nil { // 格式化类型: "1111"
-				redis.SlotCheck(slot) // 校验 slot 是否在 0-16384
+				iredis.SlotCheck(slot) // 校验 slot 是否在 0-16384
 				slots = append(slots, slot)
 				return slots, nil
 			} else { // 非法字符
@@ -57,7 +57,7 @@ func Run() {
 	sourceAddr, targetAddr, password, slotStr, count, moveWorker := param.MoveSlot()
 
 	//获取集群节点信息:addr nodeID,并判断sourceAddr 和 targetAddr 在同一个集群
-	data, err := redis.ClusterInfoFormat(sourceAddr, password)
+	data, err := iredis.ClusterInfoFormat(sourceAddr, password)
 	if err != nil {
 		fmt.Printf("获取集群所有master节点信息失败, err:%v\n", err)
 		return
@@ -69,7 +69,7 @@ func Run() {
 
 	var slots []int64
 	if slotStr == "" { // 如果 slotStr 为空,获取 sourceAddr 上所有的 slot
-		slots, err = redis.SlotsGetByInstance(data, sourceAddr)
+		slots, err = iredis.SlotsGetByInstance(data, sourceAddr)
 		if err != nil {
 			fmt.Printf("获取源节点 %s 的 slots 信息失败, err:%v\n", sourceAddr, err)
 		}
@@ -81,20 +81,20 @@ func Run() {
 	}
 
 	// 建立到 sourceAddr 的连接
-	sourceClient, err := redis.InitStandConn(sourceAddr, password)
+	sourceClient, err := iredis.InitStandConn(sourceAddr, password)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
 	// 建立到 targetAddr 的连接
-	targetClient, err := redis.InitStandConn(targetAddr, password)
+	targetClient, err := iredis.InitStandConn(targetAddr, password)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	// 函数结束后关闭 redis 连接
+	// 函数结束后关闭 iredis 连接
 	defer sourceClient.Close()
 	defer targetClient.Close()
 
@@ -102,7 +102,7 @@ func Run() {
 	startTime := time.Now()
 	fmt.Printf("Start Time: %v\n", startTime.Format("2006-01-02 15:04:05"))
 
-	redis.SlotMove(sourceAddr, targetAddr, password, slots, count, moveWorker, data)
+	iredis.SlotMove(sourceAddr, targetAddr, password, slots, count, moveWorker, data)
 
 	endTime := time.Now()
 	fmt.Printf("End Time: %v\n", endTime.Format("2006-01-02 15:04:05"))

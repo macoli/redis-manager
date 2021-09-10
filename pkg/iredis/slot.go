@@ -1,4 +1,4 @@
-package redis
+package iredis
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func SlotCheck(slot int64) {
 	}
 }
 
-// SlotsGetByInstance 从 FormatClusterInfo 中获取对应 redis 实例的所有 slot
+// SlotsGetByInstance 从 FormatClusterInfo 中获取对应 iredis 实例的所有 slot
 func SlotsGetByInstance(data *ClusterInfo, addr string) (slots []int64, err error) {
 	// 获取对应 addr 的 slotStr 信息
 	var slotStr string
@@ -104,7 +104,7 @@ func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, wor
 		return
 	}
 
-	// 函数结束后关闭 redis 连接
+	// 函数结束后关闭 iredis 连接
 	defer sourceClient.Close()
 	defer targetClient.Close()
 	defer func() {
@@ -115,10 +115,10 @@ func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, wor
 
 	// 并发迁移 slot
 	for _, SLOT := range slots {
+		workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 		wg.Add(1)
 		go func(slot int64) {
 			defer wg.Done()
-			workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 			// 执行完毕,释放信号
 			defer func() {
 				<-workerChannel
@@ -148,7 +148,7 @@ func SlotMove(sourceAddr, targetAddr, password string, slots []int64, count, wor
 			//循环迁移 slot 的数据到目标节点
 			for {
 				ret := sourceClient.ClusterGetKeysInSlot(context.Background(), int(slot), count) // 从源节点获取 slot 的 key(批量)
-				// 循环将获取的 key 发往目标 redis 实例
+				// 循环将获取的 key 发往目标 iredis 实例
 				for _, key := range ret.Val() {
 					_, err := sourceClient.Migrate(context.Background(), targetIP, targetPort, key, 0, time.Second*10).Result()
 					if err != nil {

@@ -7,13 +7,13 @@ import (
 
 	"github.com/macoli/redis-manager/pkg/param"
 
-	"github.com/macoli/redis-manager/pkg/table"
+	"github.com/macoli/redis-manager/pkg/itable"
 
-	"github.com/macoli/redis-manager/pkg/redis"
+	"github.com/macoli/redis-manager/pkg/iredis"
 )
 
 // dataSort 排序
-func dataSort(s string, data []*redis.MasterSlaveMap) {
+func dataSort(s string, data []*iredis.MasterSlaveMap) {
 	sort.Slice(data, func(i, j int) bool {
 		switch s {
 		case "MasterID":
@@ -32,14 +32,14 @@ func dataSort(s string, data []*redis.MasterSlaveMap) {
 }
 
 //show 通过表格展示
-func show(data []*redis.MasterSlaveMap, sortBy string) {
+func show(data []*iredis.MasterSlaveMap, sortBy string) {
 	if len(data) == 0 {
 		fmt.Println("集群信息为空,请检查集群状态")
 		os.Exit(0)
 	}
 	dataSort(sortBy, data)
 
-	HeaderCells := table.GenHeaderCells(redis.MasterSlaveMap{})
+	HeaderCells := itable.GenHeaderCells(iredis.MasterSlaveMap{})
 
 	dataInterface := make([]interface{}, len(data))
 	for i, rowMap := range data {
@@ -52,16 +52,16 @@ func show(data []*redis.MasterSlaveMap, sortBy string) {
 		}
 		dataInterface[i] = row
 	}
-	BodyCells := table.GenBodyCells(dataInterface)
+	BodyCells := itable.GenBodyCells(dataInterface)
 
-	table.ShowTable(HeaderCells, BodyCells)
+	itable.ShowTable(HeaderCells, BodyCells)
 }
 
 // Run 获取集群关系并通过表格展示
 func Run() {
 	addr, password, sortBy := param.ClusterMap()
 
-	data, err := redis.ClusterInfoFormat(addr, password)
+	data, err := iredis.ClusterInfoFormat(addr, password)
 	if err != nil {
 		fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 		return

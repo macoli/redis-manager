@@ -1,4 +1,4 @@
-package redis
+package iredis
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 var redisWG *sync.WaitGroup
 
-// InitStandConn 初始化单例 redis 连接
+// InitStandConn 初始化单例 iredis 连接
 func InitStandConn(addr, password string) (*redis.Client, error) {
 	rc := redis.NewClient(&redis.Options{
 		Addr:     addr,
@@ -22,13 +22,13 @@ func InitStandConn(addr, password string) (*redis.Client, error) {
 
 	_, err := rc.Ping(context.Background()).Result()
 	if err != nil {
-		errMsg := fmt.Sprintf("redis 实例 %s 连接失败: %v\n", addr, err)
+		errMsg := fmt.Sprintf("iredis 实例 %s 连接失败: %v\n", addr, err)
 		return nil, errors.New(errMsg)
 	}
 	return rc, nil
 }
 
-// InitStandConnList 批量初始化多个 redis 的连接
+// InitStandConnList 批量初始化多个 iredis 的连接
 func InitStandConnList(addrSlice []string, password string) ([]*redis.Client, error) {
 	var rcSlice []*redis.Client
 	for _, addr := range addrSlice {
@@ -41,7 +41,7 @@ func InitStandConnList(addrSlice []string, password string) ([]*redis.Client, er
 
 		_, err := rc.Ping(context.Background()).Result()
 		if err != nil {
-			errMsg := fmt.Sprintf("批量建立 redis 连接失败 : %v\n", err)
+			errMsg := fmt.Sprintf("批量建立 iredis 连接失败 : %v\n", err)
 			return nil, errors.New(errMsg)
 		}
 		rcSlice = append(rcSlice, rc)

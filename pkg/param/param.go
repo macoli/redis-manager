@@ -8,8 +8,8 @@ import (
 
 // Usage 帮助信息
 func Usage() {
-	fmt.Fprintf(os.Stdout, `Usage of redis-manager:
-Comomand: redis-manager Command [Options]
+	fmt.Fprintf(os.Stdout, `Usage of iredis-manager:
+Comomand: iredis-manager Command [Options]
 Command:
 	check           redis状态检查
 	slowlog         慢查询信息展示
@@ -63,7 +63,7 @@ func MoveSlot() (string, string, string, string, int, int) {
 	targetAddr := moveSlot.String("to", "127.0.0.1:6379", "要迁移slot的目的地址")
 	password := moveSlot.String("p", "", "password, redis集群密码,默认为空")
 	slot := moveSlot.String("slots", "", "需要迁移的slot,范围:0-16384,"+
-		"格式:1,100-100,355,2000-2002,默认迁移源 redis 的所有 slot")
+		"格式:1,100-100,355,2000-2002,默认迁移源 iredis 的所有 slot")
 	count := moveSlot.Int("count", 1000, "每次迁移key的数量")
 	moveWorker := moveSlot.Int("n", 1, "move slot work nums, 同时迁移 slot 的并发数")
 	paramsCheck(moveSlot)
@@ -102,7 +102,7 @@ func Check() (string, string, string) {
 	checkConfig := flag.NewFlagSet("check", flag.ExitOnError)
 	addr := checkConfig.String("a", "127.0.0.1:6379", "address, redis地址")
 	password := checkConfig.String("p", "", "password, redis密码")
-	redisType := checkConfig.String("t", "standalone", "type, redis 类型,可选项:standalone/sentinel/cluster")
+	redisType := checkConfig.String("t", "standalone", "type, iredis 类型,可选项:standalone/sentinel/cluster")
 	paramsCheck(checkConfig)
 
 	return *addr, *password, *redisType

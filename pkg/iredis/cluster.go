@@ -1,4 +1,4 @@
-package redis
+package iredis
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 
-	"github.com/macoli/redis-manager/pkg/slice"
+	"github.com/macoli/redis-manager/pkg/islice"
 )
 
 // ========================================cluster info format==========================================
@@ -120,7 +120,7 @@ func ClusterInfoFormat(addr, password string) (data *ClusterInfo, err error) {
 	// 格式化 ClusterNodes, 生成 ClusterInfo
 	NodeTmpMap := map[string]map[string]string{} // 临时存放主从映射关系 {nodeID:{maasterAddr: xx, ...}}
 	for _, node := range ClusterNodes {
-		if _, ok := slice.Find(node.Flags, "master"); ok { // 角色是 master
+		if _, ok := islice.Find(node.Flags, "master"); ok { // 角色是 master
 			MasterAddrs = append(MasterAddrs, node.Addr)
 			IDToAddr[node.ID] = node.Addr
 			AddrToID[node.Addr] = node.ID
@@ -143,7 +143,7 @@ func ClusterInfoFormat(addr, password string) (data *ClusterInfo, err error) {
 			NodeTmpMap[node.ID]["SlotStr"] = slotStr
 		}
 
-		if _, ok := slice.Find(node.Flags, "slave"); ok { // 角色是 slave
+		if _, ok := islice.Find(node.Flags, "slave"); ok { // 角色是 slave
 			SlaveAddrs = append(SlaveAddrs, node.Addr)
 			IDToAddr[node.ID] = node.Addr
 			AddrToID[node.Addr] = node.ID
@@ -187,7 +187,7 @@ func ClusterInfoFormat(addr, password string) (data *ClusterInfo, err error) {
 // clusterCheckConfig 校验集群配置项是否一致
 func clusterCheckConfig(addrSlice []string, password, item string) (itemValue string, err error) {
 	for _, addr := range addrSlice {
-		// 连接 redis
+		// 连接 iredis
 		rc, err := InitStandConn(addr, password)
 		if err != nil {
 			return "", err
@@ -213,13 +213,13 @@ func clusterCheckConfig(addrSlice []string, password, item string) (itemValue st
 // clusterCheckVersion 校验集群版本是否一致
 func clusterCheckVersion(addrSlice []string, password string) (version string, err error) {
 	for _, addr := range addrSlice {
-		// 创建 redis 连接
+		// 创建 iredis 连接
 		rc, err := InitStandConn(addr, password)
 		if err != nil {
 			return "", err
 		}
 
-		// 获取 redis 版本
+		// 获取 iredis 版本
 		infoStr, err := rc.Info(context.Background()).Result()
 		if err != nil {
 			errMsg := fmt.Sprintf("获取redis %s 的 Info 信息失败--%v", addr, err)
@@ -231,7 +231,7 @@ func clusterCheckVersion(addrSlice []string, password string) (version string, e
 		}
 
 		if version != "" && version != infoMap["redis_version"] {
-			errMsg := fmt.Sprintf("集群的 redis 版本不一致")
+			errMsg := fmt.Sprintf("集群的 iredis 版本不一致")
 			return "", errors.New(errMsg)
 		} else {
 			version = infoMap["redis_version"]
@@ -258,7 +258,7 @@ func ClusterConfigSet(addrSlice []string, password, configKey, setValue string) 
 
 	// 批量修改配置
 	for _, addr := range addrSlice {
-		// 连接 redis
+		// 连接 iredis
 		rc, err := InitStandConn(addr, password)
 		if err != nil {
 			return err
@@ -303,9 +303,9 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 		return
 	}
 
-	if versionPrefix == 3 { // redis 版本为 3.x
+	if versionPrefix == 3 { // iredis 版本为 3.x
 		// 获取cluster-node-timeout配置值(保存,后续恢复时使用)
-		fmt.Printf("集群当前 redis 版本为: %s, 需要调大配置项 cluster-node-timeout 的值,避免清理过程中发生主从切换\n", version)
+		fmt.Printf("集群当前 iredis 版本为: %s, 需要调大配置项 cluster-node-timeout 的值,避免清理过程中发生主从切换\n", version)
 
 		ret, err := ClusterConfigGet(clusterNodes, password, "cluster-node-timeout")
 		if err != nil {
@@ -314,7 +314,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 		}
 		fmt.Printf("集群配置项 cluster-node-timeout 的值当前为: %s (ms), 准备调大到 1800000 (ms, 30min)\n", ret)
 
-		// 调整将cluster-node-timeout配置项的值为 30 分钟,避免清空 redis 的时候发生主从切换
+		// 调整将cluster-node-timeout配置项的值为 30 分钟,避免清空 iredis 的时候发生主从切换
 		err = ClusterConfigSet(clusterNodes, password, "cluster-node-timeout", "1800000")
 		if err != nil {
 			fmt.Println(err)
@@ -322,20 +322,19 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 		}
 		fmt.Printf("集群配置项 cluster-node-timeout 的值已调整为 1800000\n")
 
-		// 并发清空 redis 操作
+		// 并发清空 iredis 操作
 		for _, addr := range data.Masters {
+			workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 			wg.Add(1)
 			go func(address string) {
 				defer wg.Done()
-
-				workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 				// 执行完毕,释放信号
 				defer func() {
 					<-workerChannel
 				}()
 
-				// =================清空 redis =========================
-				// 连接 redis
+				// =================清空 iredis =========================
+				// 连接 iredis
 				rc := redis.NewClient(&redis.Options{
 					Addr:        address,
 					Password:    password,
@@ -347,7 +346,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 
 				_, err := rc.Ping(context.Background()).Result()
 				if err != nil {
-					fmt.Printf("redis 实例 %s 连接失败: %v\n", addr, err)
+					fmt.Printf("iredis 实例 %s 连接失败: %v\n", addr, err)
 					return
 				}
 
@@ -372,8 +371,8 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 				fmt.Printf("!!! %s 数据已清空\n", addr)
 			}(addr)
 		}
-		wg.Wait()
 
+		wg.Wait()
 		fmt.Printf("集群已清理完成, 将集群配置项 cluster-node-timeout 的值还原为 %s\n", ret)
 		cnt := 0
 		for {
@@ -386,7 +385,7 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 			if err != nil {
 				cnt += 1
 				interval := time.Second * time.Duration(cnt*10)
-				fmt.Printf("还原失败, %v 后重试第 %d 次\n", interval, cnt)
+				fmt.Printf("还原配置项失败, %v 后重试第 %d 次\n", interval, cnt)
 				time.Sleep(interval)
 				continue
 			} else {
@@ -401,22 +400,21 @@ func ClusterFlush(data *ClusterInfo, password, flushCMD string, workerNums int) 
 
 		}
 
-	} else if versionPrefix >= 4 { // redis 版本为 4.x 版本及以上
-		fmt.Printf("集群当前 redis 版本为: %s, 支持异步清空数据,清空命令执行完后会在后台逐步完成清理\n", version)
-		// 并发清空 redis 操作
+	} else if versionPrefix >= 4 { // iredis 版本为 4.x 版本及以上
+		fmt.Printf("集群当前 iredis 版本为: %s, 支持异步清空数据,清空命令执行完后会在后台逐步完成清理\n", version)
+		// 并发清空 iredis 操作
 		for _, addr := range data.Masters {
+			workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 			wg.Add(1)
 			go func(address string) {
 				defer wg.Done()
-
-				workerChannel <- struct{}{} // 添加信号,当 workerChannel 满了之后就会阻塞创建新的 goroutine
 				// 执行完毕,释放信号
 				defer func() {
 					<-workerChannel
 				}()
 
-				// =================清空 redis =========================
-				// 连接 redis
+				// =================清空 iredis =========================
+				// 连接 iredis
 				rc, err := InitStandConn(address, password)
 				if err != nil {
 					fmt.Println(err)
