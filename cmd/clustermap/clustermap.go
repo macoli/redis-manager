@@ -66,8 +66,8 @@ func Run() {
 		fmt.Printf("获取集群节点信息失败, err:%v\n", err)
 		return
 	}
-	for _, d := range data.MasterSlaveMaps {
-		fmt.Printf("%#v\n", *d)
-	}
+	//for _, d := range data.MasterSlaveMaps {
+	//	fmt.Printf("%#v\n", *d)
+	//}
 	show(data.MasterSlaveMaps, sortBy)
 }
