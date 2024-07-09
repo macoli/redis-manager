@@ -30,6 +30,7 @@ type ClusterNode struct {
 }
 
 // getNodes 格式化 cluster nodes 命令返回的结果
+// GetNodes 函数用于解析nodesStr字符串，将其转换为[]*ClusterNode切片，并返回
 func getNodes(nodesStr string) (nodes []*ClusterNode, err error) {
 	nodesStr = strings.Trim(nodesStr, "\n") // 去掉首尾的换行符
 
